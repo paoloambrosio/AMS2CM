@@ -1,5 +1,8 @@
 # ThunderFlash Mods Converter
 
+> Since version 3.0 ThunderFlash Mods come with AMS2CM support.
+> This script is no longer needed.
+
 ## Usage
 
 - Extract the mods pack archive somewhere
