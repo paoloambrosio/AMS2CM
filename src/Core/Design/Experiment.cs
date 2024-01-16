@@ -8,6 +8,7 @@ internal class Experiment
 // - identify if a mod needs configuration
 // - method to concatenate all files at the root either from archive or directory for post-processing
 // - trd and crd come from the file list
+// - identify root subdirectories
 //
 // NOTES:
 // - This should be either an interface or the repository should inject
@@ -16,27 +17,45 @@ internal class Experiment
 // - THIS SHOULD NOT BE CREATED FOR CUSTOM BOOTFILES OR THEY WOULD
 //   BE CONFIGURED LIKE ANY OTHER MOD. WE SHOULD CREATE DIRECTLY AN
 //   ArchiveSourceInstaller (OR ITS OWN IFileInstaller TO EXTRACT FROM GAME)
-internal class ModSource
+//
+// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
+// - it feels wrong to have ModSource implement IInstallable directly
+// - identification of root directories must be shared between 7z and dirs (but now it's only 7z)
+// - need to find a way to expose files that are not installable, without installing them
+internal class ModSource : IInstallable
 {
-    public ModInstaller Installer()
+    public string Configuration => "TODO";
+
+    public void Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile)
     {
-        // Here...
-        // - identify root subdirectories
-        // - create the right IFileInstaller based on source type (zip file or a directory)
         throw new NotImplementedException();
     }
 }
 
+// OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK
+internal interface IInstallable
+{
+    /// <summary>
+    /// Install files into a target directory.
+    /// </summary>
+    /// <param name="targetPath">Target directory path where to install files.</param>
+    /// <param name="beforeFile">Callback to accept or reject file before file installation.</param>
+    /// <param name="afterFile">Callback after file installation.</param>
+    public void Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile);
+}
+
 // This one could have the concept of file deletion, not the ModSource
 // or IPackageInstaller, so that it can be used for bootfiles as well
+// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
+// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
+// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
 internal class ModInstaller
 {
-    private readonly IFileInstaller fileInstaller;
-    private readonly List<Predicate<string>> inclusionFilters;
+    private readonly string targetPath;
 
-    public ModInstaller(IFileInstaller fileInstaller)
+    public ModInstaller(string targetPath)
     {
-        this.fileInstaller = fileInstaller;
+        this.targetPath = targetPath;
     }
 
     public ModInstaller Include(Predicate<string> inclusionFilter)
@@ -45,7 +64,12 @@ internal class ModInstaller
         return this;
     }
 
-    public InstallationState Install(string targetPath)
+    public InstallationState Uninstall(InstallationState currentState, Predicate<string> forEach)
+    {
+        throw new NotImplementedException();
+    }
+
+    public InstallationState Install(IFileInstaller fileInstaller, Predicate<string> forEach)
     {
         var installedFiles = new List<string>();
         fileInstaller.Extract(targetPath, TrackIncludedFiles(installedFiles));
@@ -75,21 +99,12 @@ public static class Predicate {
 
 public record InstallationState
 (
-//    InstallationResult Result,
     bool Successful,
     IReadOnlyCollection<string> InstalledFiles
-);
-//{
-//    public bool Successful => Result == InstallationResult.Installed;
-//}
-
-// THIS IS NOT NEEDED ANYMORE BECAUSE PARTIAL INSTALL IS RELEVANT ONLY AT THE SERVICE LEVEL
-//public enum InstallationResult
-//{
-//    NotInstalled = 0,
-//    PartiallyInstalled = 1,
-//    Installed = 2
-//}
+)
+{
+    public bool Installed => InstalledFiles.Any();
+}
 
 // This can be implemented for archives, filesystem or even pakfiles without
 // extracting them, thus removing the need for a temporary directory
@@ -98,6 +113,19 @@ public record InstallationState
 internal interface IFileInstaller
 {
     public void Extract(string targetPath, Predicate<string> before);
+
+    internal interface IExtractCallback
+    {
+        internal class Before : IExtractCallback
+        {
+            public string? TargetPath { get; set; }
+        }
+
+        internal record After : IExtractCallback
+        {
+            public string? TargetPath { get; }
+        }
+    }
 }
 
 // 7zip's ExtractFiles methods has a callback where you can specify what to do with the file
