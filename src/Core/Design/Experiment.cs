@@ -1,250 +1,102 @@
 ﻿using Core.Mods;
-using static Core.Design.Experiment.PackageInstaller;
+using Core.State;
 
 namespace Core.Design;
 
-internal class Experiment
+/* TODO
+ * - wrappers don't work!!!
+ * - backup should be done by another wrapper that calls the
+ *   collaborator that handles backup and restore, not by the
+ *   installer itself
+ * - how do we handle file deletion? We should probably pass a record
+ *   with operation, path, etc. instead of string to the callback?
+ *   actually a deletion is not special at the moment: it can be
+ *   abstracted inside the mod (part of the single mod installer, not
+ *   the generic ModPackageInstaller)
+ */
+
+
+/* Note that some files (trd, crd, ...) are excluded from config */
+public class IModPackage : IInstallable<string, ConfigEntries>
 {
-    private ModRepository modRepository;
 
-    // - delete can come from the mod as well (e.g. custom bootfiles)
-    public void MainLoop()
-    {
-        var oldInstallationState = new InstallationState();
-        var gameDirectory = "";
-        var packageInstaller = PackageInstaller.Into(gameDirectory)
-            .WithFilter(new BackupRestoreFilter(oldInstallationState))
-            .WithFilter(new InstallationStateTracker());
-        foreach (var package in modRepository.ListEnabledMods())
-        {
-            packageInstaller.Install(package);
-        }
-    }
+    // IInstaller<ModConfig> Installer() {
+    //   // It returns the right installer for the kind of package
+    //   throw new NotImplementedException();
+    // }
+    public string Name => throw new NotImplementedException();
 
-    internal class BackupRestoreFilter : EmptyFilter
-    {
-        private InstallationState installationState;
+    public ConfigEntries Install(IInstallable<string, ConfigEntries>.Callbacks callbacks) => throw new NotImplementedException();
+}
 
-        public BackupRestoreFilter(InstallationState installationState)
-        {
-            this.installationState = installationState;
-        }
-
-        public override void BeforeAll()
-        {
-            // I'VE MISSED SOMETHING: IS AFTER ALL AFTER ALL PACKAGES?
-            // DON'T THINK I CAN DO THAT. ONLY AFTER ALL FILES IN A PACKAGE
-            // Uninstall everything in v1.
-            // In v2, keep track of installed files in AfterEach and remove
-            // what wasn't installed in the AfterAll.
-            // To do this, it needs to be at the beginning because installation
-            // of files can be stopped by any BeforeEach filter call.
-            throw new NotImplementedException();
-        }
-    }
-
-
-    // This could track already installed files and stop them from being copied
-    // It could also be merged with the other one?
-    internal class InstallationStateTracker : EmptyFilter
-    {
-    }
-
-internal record InstallationState();
-
-internal class PackageInstaller
+class ModPackageInstaller // : IPackageInstaller
 {
-    // Perhaps the IFileInstaller could have its own IFilter with only the *Each()?
-    // ...or maybe it needs to be more powerful than this?
-    internal interface IFilter
+    // All features like bootfiles awareness, backup, etc. are
+    // implmented as plugins to be tested independently.
+    interface InstallerExtension
     {
-        void BeforeAll();
-        /// <summary>
-        /// Before each file is installed
-        /// </summary>
-        bool BeforeEach();
-        void AfterEach();
-        void AfterAll();
+        void initApply(
+          out Dictionary<string, InternalModInstallationState> currentState,
+          out IEnumerable<IModPackage> desiredPackages
+        );
     }
 
-    internal class EmptyFilter : IFilter
-    {
-        public void BeforeAll() {}
-        public bool BeforeEach() => true;
-        public void AfterEach() {}
-        public void AfterAll() {}
-    }
+    private List<InstallerExtension> extensions;
 
-    internal static PackageInstaller Into(string targetDirectory)
-    {
-        return new PackageInstaller();
-    }
-
-    internal PackageInstaller WithFilter(IFilter filter)
+    // TODO this doesn't allow the service to add callbacks for logging, etc.
+    public Dictionary<string, InternalModInstallationState> Apply(
+        Dictionary<string, InternalModInstallationState> currentState,
+        IEnumerable<IModPackage> desiredPackages)
     {
         throw new NotImplementedException();
     }
-
-    // This should return the installation result and installed files?
-    internal void Install(ModPackage package) => throw new NotImplementedException();
 }
 
-// Here...
-// - identify if a mod needs configuration
-// - method to concatenate all files at the root either from archive or directory for post-processing
-// - trd and crd come from the file list
-// - identify root subdirectories
-//
-// NOTES:
-// - This should be either an interface or the repository should inject
-//   the IFileInstaller so that it can be testable
-// - THIS SHOULD NOT BE CREATED FOR CUSTOM BOOTFILES OR THEY WOULD
-//   BE CONFIGURED LIKE ANY OTHER MOD. WE SHOULD CREATE DIRECTLY AN
-//   ArchiveSourceInstaller (OR ITS OWN IFileInstaller TO EXTRACT FROM GAME)
-//
-// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
-// - it feels wrong to have ModSource implement IInstallable directly
-// - identification of root directories must be shared between 7z and dirs (but now it's only 7z)
-// - need to find a way to expose files that are not installable, without installing them
-//internal class ModSource : IInstallable
+/*********************************************
+ * THIS INTERFACE IS TERRIBLE!!!!!!!
+ *
+ * Callbacks:
+ * - cancellation token
+ * - logs
+ * - update progress
+ *********************************************/
+//interface IPackageInstaller<TPackage, TState, TId, TConfig> where Package : IInstallable<TId, TConfig>
 //{
-//    public string Configuration => "TODO";
-
-//    public void Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile)
-//    {
-//        throw new NotImplementedException();
-//    }
+//    IReadOnlyDictionary<TId, TState> Install(IEnumerable<TPackage> packages)
 //}
 
-// OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK
-internal interface IInstallable<T> : IDisposable
-    {
-    /// <summary>
-    /// Install files into a target directory.
-    /// </summary>
-    /// <param name="targetPath">Target directory path where to install files.</param>
-    /// <param name="beforeFile">Callback to accept or reject file before file installation.</param>
-    /// <param name="afterFile">Callback after file installation.</param>
-    /// <returns>Some object to represent some installation state</returns>
-    public T Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile);
-}
-
-// This one could have the concept of file deletion, not the ModSource
-// or IPackageInstaller, so that it can be used for bootfiles as well
-// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
-// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
-// TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN TODO REDESIGN
-internal class ModInstaller
+/*********************************************
+* Filters
+* - skip already installed file
+* - exclude files (dll, exe)
+* - backup (and later restore?)
+*********************************************/
+public interface IInstallable<TId, TConfig>
 {
-    private readonly string targetPath;
+    public TId Name { get; }
 
-    public ModInstaller(string targetPath)
-    {
-        this.targetPath = targetPath;
-    }
+    // IInstaller<T> Installer();
 
-    public ModInstaller Include(Predicate<string> inclusionFilter)
+    /*********************************************
+    * Filters
+    * - skip already installed file
+    * - exclude files (dll, exe)
+    * - backup (and later restore?)
+    *********************************************/
+    public interface Callbacks
     {
-        inclusionFilters.Add(inclusionFilter);
-        return this;
+        public Predicate<string> BeforeEachFile { get; }
+        public Action<string> AfterEachFile { get; }
     }
-
-    public InstallationState Uninstall(InstallationState currentState, Predicate<string> forEach)
-    {
-        throw new NotImplementedException();
-    }
-
-    public InstallationState Install(IFileInstaller fileInstaller, Predicate<string> forEach)
-    {
-        var installedFiles = new List<string>();
-        fileInstaller.Extract(targetPath, TrackIncludedFiles(installedFiles));
-        throw new NotImplementedException();
-    }
-
-    private Predicate<string> TrackIncludedFiles(IList<string> includedFiles)
-    {
-        // TODO this should also
-        // - backup the file
-        // - skip it if it should be deleted
-        // - remove the deletion file suffix before tracking the installed file and calling filters
-        bool TrackIncluded(string filePath) {
-            includedFiles.Add(filePath);
-            return true;
-        }
-        return inclusionFilters.Append(TrackIncluded).Aggregate(Predicate.And<string>);
-    }
+    public TConfig Install(Callbacks callbacks); // This version makes wrapping easier
 }
 
-public static class Predicate {
-    public static Predicate<T> And<T>(this Predicate<T> left, Predicate<T> right)
-    {
-        return a => left(a) && right(a);
-    }
-}
-
-public record InstallationState
-(
-    bool Successful,
-    IReadOnlyCollection<string> InstalledFiles
-)
-{
-    public bool Installed => InstalledFiles.Any();
-}
-
-// This can be implemented for archives, filesystem or even pakfiles without
-// extracting them, thus removing the need for a temporary directory
-// Shall we have something like what 7z has where we pass a struct (or perhaps
-// a union type https://spencerfarley.com/2021/03/26/unions-in-csharp/#short-version)
-internal interface IFileInstaller
-{
-    public void Extract(string targetPath, Predicate<string> before);
-
-    internal interface IExtractCallback
-    {
-        internal class Before : IExtractCallback
-        {
-            public string? TargetPath { get; set; }
-        }
-
-        internal record After : IExtractCallback
-        {
-            public string? TargetPath { get; }
-        }
-    }
-}
-
-// 7zip's ExtractFiles methods has a callback where you can specify what to do with the file
-// - ExtractToFile to specify the directory to extract it to (or nothing to skip it)
-// - ExtractToStream could be used to route readmes to parse config
-// - Exception when an error occurres and CancelExtraction to stop extraction
-// Notes:
-// - there is a reason parameter so it's called before and after
-// - it's annoying that we can have several mod roots and that we need to identify them based
-//   on directory names; we don't want to build it while we extract files in case we see first
-//   other files that are at a root but we haven't seen a directory yet
-
-internal class ArchiveSourceInstaller : IFileInstaller
-{
-    public ArchiveSourceInstaller(IList<string> rootPaths)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void Extract(string targetPath, Predicate<string> before)
-    {
-
-    }
-}
-
-internal class DirectorySourceInstaller : IFileInstaller
-{
-    public DirectorySourceInstaller(IList<string> rootPaths)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void Extract(string targetPath, Predicate<string> before)
-    {
-
-    }
-}
+// interface IInstaller<T> : IDisposable {
+//   IInstaller BeforeEachFile(Predicate<string> predicate);
+//   IInstaller AfterEachFile(Action<string> action);
+//   T Install();
+//   interface Callbacks {
+//     Predicate<string> BeforeEachFile;
+//     Action<string> AfterEachFile;
+//   }
+// }
