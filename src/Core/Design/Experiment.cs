@@ -1,7 +1,92 @@
-﻿namespace Core.Design;
+﻿using Core.Mods;
+using static Core.Design.Experiment.PackageInstaller;
+
+namespace Core.Design;
 
 internal class Experiment
 {
+    private ModRepository modRepository;
+
+    // - delete can come from the mod as well (e.g. custom bootfiles)
+    public void MainLoop()
+    {
+        var oldInstallationState = new InstallationState();
+        var gameDirectory = "";
+        var packageInstaller = PackageInstaller.Into(gameDirectory)
+            .WithFilter(new BackupRestoreFilter(oldInstallationState))
+            .WithFilter(new InstallationStateTracker());
+        foreach (var package in modRepository.ListEnabledMods())
+        {
+            packageInstaller.Install(package);
+        }
+    }
+
+    internal class BackupRestoreFilter : EmptyFilter
+    {
+        private InstallationState installationState;
+
+        public BackupRestoreFilter(InstallationState installationState)
+        {
+            this.installationState = installationState;
+        }
+
+        public override void BeforeAll()
+        {
+            // I'VE MISSED SOMETHING: IS AFTER ALL AFTER ALL PACKAGES?
+            // DON'T THINK I CAN DO THAT. ONLY AFTER ALL FILES IN A PACKAGE
+            // Uninstall everything in v1.
+            // In v2, keep track of installed files in AfterEach and remove
+            // what wasn't installed in the AfterAll.
+            // To do this, it needs to be at the beginning because installation
+            // of files can be stopped by any BeforeEach filter call.
+            throw new NotImplementedException();
+        }
+    }
+
+
+    // This could track already installed files and stop them from being copied
+    // It could also be merged with the other one?
+    internal class InstallationStateTracker : EmptyFilter
+    {
+    }
+
+internal record InstallationState();
+
+internal class PackageInstaller
+{
+    // Perhaps the IFileInstaller could have its own IFilter with only the *Each()?
+    // ...or maybe it needs to be more powerful than this?
+    internal interface IFilter
+    {
+        void BeforeAll();
+        /// <summary>
+        /// Before each file is installed
+        /// </summary>
+        bool BeforeEach();
+        void AfterEach();
+        void AfterAll();
+    }
+
+    internal class EmptyFilter : IFilter
+    {
+        public void BeforeAll() {}
+        public bool BeforeEach() => true;
+        public void AfterEach() {}
+        public void AfterAll() {}
+    }
+
+    internal static PackageInstaller Into(string targetDirectory)
+    {
+        return new PackageInstaller();
+    }
+
+    internal PackageInstaller WithFilter(IFilter filter)
+    {
+        throw new NotImplementedException();
+    }
+
+    // This should return the installation result and installed files?
+    internal void Install(ModPackage package) => throw new NotImplementedException();
 }
 
 // Here...
@@ -12,8 +97,7 @@ internal class Experiment
 //
 // NOTES:
 // - This should be either an interface or the repository should inject
-//   the IFileInstaller (or perhaps an interface that implements it)
-//   so that it can be testable
+//   the IFileInstaller so that it can be testable
 // - THIS SHOULD NOT BE CREATED FOR CUSTOM BOOTFILES OR THEY WOULD
 //   BE CONFIGURED LIKE ANY OTHER MOD. WE SHOULD CREATE DIRECTLY AN
 //   ArchiveSourceInstaller (OR ITS OWN IFileInstaller TO EXTRACT FROM GAME)
@@ -22,26 +106,27 @@ internal class Experiment
 // - it feels wrong to have ModSource implement IInstallable directly
 // - identification of root directories must be shared between 7z and dirs (but now it's only 7z)
 // - need to find a way to expose files that are not installable, without installing them
-internal class ModSource : IInstallable
-{
-    public string Configuration => "TODO";
+//internal class ModSource : IInstallable
+//{
+//    public string Configuration => "TODO";
 
-    public void Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile)
-    {
-        throw new NotImplementedException();
-    }
-}
+//    public void Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile)
+//    {
+//        throw new NotImplementedException();
+//    }
+//}
 
 // OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK OK
-internal interface IInstallable
-{
+internal interface IInstallable<T> : IDisposable
+    {
     /// <summary>
     /// Install files into a target directory.
     /// </summary>
     /// <param name="targetPath">Target directory path where to install files.</param>
     /// <param name="beforeFile">Callback to accept or reject file before file installation.</param>
     /// <param name="afterFile">Callback after file installation.</param>
-    public void Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile);
+    /// <returns>Some object to represent some installation state</returns>
+    public T Install(string targetPath, Predicate<string> beforeFile, Action<string> afterFile);
 }
 
 // This one could have the concept of file deletion, not the ModSource
