@@ -224,14 +224,14 @@ internal class ModManager : IModManager
         }
     }
 
-    private void UninstallFiles(ISet<string> files, BeforeFileCallback beforeFileCallback) =>
+    private void UninstallFiles(ISet<string> files, Predicate<string> beforeFileCallback) =>
         JsgmeFileInstaller.UninstallFiles(
                 game.InstallationDirectory,
                 files,
                 beforeFileCallback,
                 p => files.Remove(p));
 
-    private BeforeFileCallback SkipCreatedAfter(DateTime? dateTimeUtc)
+    private Predicate<string> SkipCreatedAfter(DateTime? dateTimeUtc)
     {
         if (dateTimeUtc is null)
         {
@@ -361,7 +361,7 @@ internal class ModManager : IModManager
         using var extractor = new SevenZipExtractor(modPackage.FullPath);
         extractor.ExtractArchive(extractionDir);
 
-        return modFactory.ManualInstallMod(modPackage.PackageName, modPackage.FsHash, extractionDir);
+        return modFactory.ManualInstallMod(modPackage.PackageName, modPackage.FsHash, tempDir);
     }
 
     private IMod BootfilesMod()

@@ -4,6 +4,6 @@ namespace Core;
 
 public interface IModFactory
 {
-    IMod ManualInstallMod(string packageName, int packageFsHash, string extractedPath);
+    IMod ManualInstallMod(string packageName, int packageFsHash, string tempDir);
     IMod GeneratedBootfiles(string generationBasePath);
 }
