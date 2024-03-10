@@ -1,63 +1,25 @@
 ﻿namespace Core.Mods;
 
-public abstract class ExtractedMod : IMod
+public abstract class ExtractedMod : BaseMod
 {
     protected readonly string extractedPath;
-    protected readonly List<string> installedFiles = new();
 
     internal ExtractedMod(string packageName, int? packageFsHash, string extractedPath)
+    : base(packageName, packageFsHash)
     {
-        PackageName = packageName;
-        PackageFsHash = packageFsHash;
         this.extractedPath = extractedPath;
     }
 
-    public string PackageName
+    protected override ConfigEntries InstallLoop(string dstPath, Predicate<string> beforeEachFile, Action<string> afterEachFile)
     {
-        get;
-    }
-
-    public int? PackageFsHash
-    {
-        get;
-    }
-
-    public IMod.InstalledState Installed
-    {
-        get;
-        private set;
-    }
-
-    public IReadOnlyCollection<string> InstalledFiles => installedFiles;
-
-    public ConfigEntries Install(string dstPath, Predicate<string> beforeFileCallback)
-    {
-        if (Installed != IMod.InstalledState.NotInstalled)
-        {
-            throw new InvalidOperationException();
-        }
-        Installed = IMod.InstalledState.PartiallyInstalled;
-
-        var now = DateTime.UtcNow;
         foreach (var rootPath in ExtractedRootDirs())
         {
             JsgmeFileInstaller.InstallFiles(rootPath, dstPath,
                 relativePath =>
                     FileShouldBeInstalled(relativePath) &&
-                    beforeFileCallback(relativePath),
-                relativePath =>
-                {
-                    installedFiles.Add(relativePath);
-                    var fullPath = Path.Combine(dstPath, relativePath);
-                    if (File.Exists(fullPath) && File.GetCreationTimeUtc(fullPath) > now)
-                    {
-                        File.SetCreationTimeUtc(fullPath, now);
-                    }
-                }
-            );
+                    beforeEachFile(relativePath),
+                afterEachFile);
         }
-        Installed = IMod.InstalledState.Installed;
-
         return GenerateConfig();
     }
 
