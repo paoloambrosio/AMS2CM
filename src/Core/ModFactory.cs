@@ -18,9 +18,9 @@ public class ModFactory : IModFactory
         this.game = game;
     }
 
-    public IMod ManualInstallMod(string packageName, int packageFsHash, string extractedPath) =>
+    public IInstallable ManualInstallMod(string packageName, int packageFsHash, string extractedPath) =>
         new ManualInstallMod(packageName, packageFsHash, extractedPath, config);
 
-    public IMod GeneratedBootfiles(string generationBasePath) =>
+    public IInstallable GeneratedBootfiles(string generationBasePath) =>
         new GeneratedBootfiles(game.InstallationDirectory, generationBasePath);
 }

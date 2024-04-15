@@ -1,6 +1,6 @@
 ﻿namespace Core.Mods;
 
-public interface IMod
+public interface IInstallable
 {
     string PackageName { get; }
     InstalledState Installed { get; }

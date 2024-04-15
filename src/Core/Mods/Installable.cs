@@ -1,10 +1,10 @@
 ﻿namespace Core.Mods;
 
-public abstract class BaseMod : IMod
+public abstract class Installable : IInstallable
 {
     protected readonly List<string> installedFiles = new();
 
-    protected BaseMod(string packageName, int? packageFsHash)
+    protected Installable(string packageName, int? packageFsHash)
     {
         PackageName = packageName;
         PackageFsHash = packageFsHash;
@@ -20,7 +20,7 @@ public abstract class BaseMod : IMod
         get;
     }
 
-    public IMod.InstalledState Installed
+    public IInstallable.InstalledState Installed
     {
         get;
         private set;
@@ -30,24 +30,25 @@ public abstract class BaseMod : IMod
 
     public ConfigEntries Install(string dstPath, Predicate<string> beforeEachFile)
     {
-        if (Installed != IMod.InstalledState.NotInstalled)
+        if (Installed != IInstallable.InstalledState.NotInstalled)
         {
             throw new InvalidOperationException();
         }
-        Installed = IMod.InstalledState.PartiallyInstalled;
+        using var installer = NewInstaller();
+        Installed = IInstallable.InstalledState.PartiallyInstalled;
 
-        var config = InstallLoop(
+        var config = installer.Install(
                 dstPath,
                 beforeEachFile,
                 CommonAfterEachFile(dstPath, DateTime.UtcNow)
             );
 
-        Installed = IMod.InstalledState.Installed;
+        Installed = IInstallable.InstalledState.Installed;
 
         return config;
     }
 
-    protected abstract ConfigEntries InstallLoop(string dstPath, Predicate<string> beforeEachFile, Action<string> afterEachFile);
+    protected abstract IInstaller NewInstaller();
 
     private Action<string> CommonAfterEachFile(string dstPath, DateTime installDateTime) =>
         (string relativeFilePath) =>

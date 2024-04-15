@@ -3,7 +3,7 @@ using PCarsTools.Encryption;
 
 namespace Core.Mods;
 
-internal class GeneratedBootfiles : ExtractedMod
+internal class GeneratedBootfiles : Installable
 {
     internal const string VirtualPackageName = "__bootfiles_generated";
     internal const string PakfilesDirectory = "Pakfiles";
@@ -63,7 +63,7 @@ internal class GeneratedBootfiles : ExtractedMod
         }
     }
 
-    protected override IEnumerable<string> ExtractedRootDirs() => new[] { extractedPath };
+    //protected override IEnumerable<string> ExtractedRootDirs() => new[] { extractedPath };
 
-    protected override ConfigEntries GenerateConfig() => ConfigEntries.Empty;
+    //protected override ConfigEntries GenerateConfig() => ConfigEntries.Empty;
 }

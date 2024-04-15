@@ -223,11 +223,11 @@ internal class ModManager : IModManager
         }
     }
 
-    private void UninstallFiles(ISet<string> files, Predicate<string> beforeFileCallback) =>
+    private void UninstallFiles(ISet<string> files, Predicate<string> acceptFileCallback) =>
         JsgmeFileInstaller.UninstallFiles(
                 game.InstallationDirectory,
                 files,
-                beforeFileCallback,
+                acceptFileCallback,
                 p => files.Remove(p));
 
     private Predicate<string> SkipCreatedAfter(DateTime? dateTimeUtc)
@@ -297,7 +297,7 @@ internal class ModManager : IModManager
                     {
                         installedFilesByMod.Add(mod.PackageName, new(
                             FsHash: mod.PackageFsHash,
-                            Partial: mod.Installed == IMod.InstalledState.PartiallyInstalled,
+                            Partial: mod.Installed == IInstallable.InstalledState.PartiallyInstalled,
                             Files: mod.InstalledFiles
                         ));
                     }
@@ -324,7 +324,7 @@ internal class ModManager : IModManager
                     {
                         installedFilesByMod.Add(bootfilesMod.PackageName, new(
                             FsHash: bootfilesMod.PackageFsHash,
-                            Partial: bootfilesMod.Installed == IMod.InstalledState.PartiallyInstalled || !postProcessingDone,
+                            Partial: bootfilesMod.Installed == IInstallable.InstalledState.PartiallyInstalled || !postProcessingDone,
                             Files: bootfilesMod.InstalledFiles
                         ));
                     }
@@ -354,7 +354,7 @@ internal class ModManager : IModManager
 
     private static bool IsBootFiles(string packageName) => packageName.StartsWith(BootfilesPrefix);
 
-    private IMod ExtractMod(ModPackage modPackage)
+    private IInstallable ExtractMod(ModPackage modPackage)
     {
         var extractionDir = Path.Combine(tempDir, modPackage.PackageName);
         using var extractor = new SevenZipExtractor(modPackage.FullPath);
@@ -363,7 +363,7 @@ internal class ModManager : IModManager
         return modFactory.ManualInstallMod(modPackage.PackageName, modPackage.FsHash, tempDir);
     }
 
-    private IMod BootfilesMod()
+    private IInstallable BootfilesMod()
     {
         var bootfilesPackages = modRepository.ListEnabledMods().Where(_ => IsBootFiles(_.PackageName));
         switch (bootfilesPackages.Count())
