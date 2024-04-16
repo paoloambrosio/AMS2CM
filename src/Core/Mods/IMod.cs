@@ -7,7 +7,7 @@ public interface IMod
     IReadOnlyCollection<string> InstalledFiles { get; }
     int? PackageFsHash { get; }
 
-    ConfigEntries Install(string dstPath, IProcessingCallbacks<string> callbacks);
+    ConfigEntries Install(string dstPath, ProcessingCallbacks<string> callbacks);
 
     public enum InstalledState
     {

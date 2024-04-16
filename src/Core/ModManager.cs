@@ -272,8 +272,7 @@ internal class ModManager : IModManager
         var installedFilesByMod = new Dictionary<string, InternalModInstallationState>();
         var installedFiles = new HashSet<string>();
         bool SkipAlreadyInstalled(string file) => installedFiles.Add(file.ToLowerInvariant());
-        var installCallbacks = ProcessingCallbacks<string>.Null()
-            .WithAccept(SkipAlreadyInstalled);
+        var installCallbacks = new ProcessingCallbacks<string> { Accept = SkipAlreadyInstalled };
         try
         {
             if (modPackages.Any())

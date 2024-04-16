@@ -30,7 +30,7 @@ public abstract class ExtractedMod : IMod
 
     public IReadOnlyCollection<string> InstalledFiles => installedFiles;
 
-    public ConfigEntries Install(string dstPath, IProcessingCallbacks<string> callbacks)
+    public ConfigEntries Install(string dstPath, ProcessingCallbacks<string> callbacks)
     {
         if (Installed != IMod.InstalledState.NotInstalled)
         {
@@ -42,9 +42,9 @@ public abstract class ExtractedMod : IMod
         foreach (var rootPath in ExtractedRootDirs())
         {
             JsgmeFileInstaller.InstallFiles(rootPath, dstPath,
-                ProcessingCallbacks<string>.From(callbacks)
-                    .WithAccept(FileShouldBeInstalled)
-                    .WithAfter(relativePath =>
+                callbacks
+                    .AndAccept(FileShouldBeInstalled)
+                    .AndAfter(relativePath =>
                     {
                         installedFiles.Add(relativePath);
                         // TODO This should be moved out to where we skip backup if created after

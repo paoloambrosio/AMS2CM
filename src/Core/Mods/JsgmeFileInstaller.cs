@@ -18,10 +18,10 @@ public static class JsgmeFileInstaller
     /// <param name="srcPath">Directory containing extracted mod archive</param>
     /// <param name="dstPath">Game directory</param>
     /// <param name="callbacks">Relative file path processing callbacks</param>
-    public static void InstallFiles(string srcPath, string dstPath, IProcessingCallbacks<string> callbacks) =>
+    public static void InstallFiles(string srcPath, string dstPath, ProcessingCallbacks<string> callbacks) =>
         RecursiveMoveWithBackup(srcPath, dstPath, callbacks);
 
-    private static void RecursiveMoveWithBackup(string srcPath, string dstPath, IProcessingCallbacks<string> callbacks)
+    private static void RecursiveMoveWithBackup(string srcPath, string dstPath, ProcessingCallbacks<string> callbacks)
     {
         if (!Directory.Exists(dstPath))
         {
