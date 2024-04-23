@@ -12,9 +12,10 @@ public static class Init
     {
         var game = new Game(config.Game);
         var modsDir = Path.Combine(game.InstallationDirectory, ModsDirName);
+        var tempDir = new ModSubdirectoryTempDir(modsDir);
         var statePersistence = new JsonFileStatePersistence(modsDir);
         var modFactory = new ModFactory(config.ModInstall, game);
         var safeFileDelete = new WindowsRecyclingBin();
-        return new ModManager(game, modsDir, modFactory, statePersistence, safeFileDelete);
+        return new ModManager(game, modsDir, modFactory, statePersistence, safeFileDelete, tempDir);
     }
 }

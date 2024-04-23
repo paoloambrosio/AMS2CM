@@ -103,7 +103,7 @@ internal class ModRepository
     }
 }
 
-internal record ModPackage
+public record ModPackage
 (
     string Name,
     string PackageName, // TODO: rename to ID
