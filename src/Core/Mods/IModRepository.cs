@@ -3,11 +3,10 @@ namespace Core.Mods;
 
 public interface IModRepository
 {
-    ModPackage UploadMod(string sourceFilePath);
-    string EnableMod(string packagePath);
-    string DisableMod(string packagePath);
-    IReadOnlyCollection<ModPackage> ListEnabledMods();
-    IReadOnlyCollection<ModPackage> ListDisabledMods();
+    ModPackage UploadPackage(string sourceFilePath);
+    string EnablePackage(string packagePath);
+    string DisablePackage(string packagePath);
+    IReadOnlyCollection<ModPackage> ListPackages();
 }
 
 public record ModPackage
@@ -15,5 +14,6 @@ public record ModPackage
     string PackageName,
     string FullPath,
     bool Enabled,
-    int? FsHash
+    int? FsHash,
+    IInstaller Installer
 );

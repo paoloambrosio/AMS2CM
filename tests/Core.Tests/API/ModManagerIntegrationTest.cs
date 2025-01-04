@@ -253,7 +253,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_InstallsContentFromRootDirectories()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine("Foo", DirAtRoot, "A"),
                 Path.Combine("Bar", DirAtRoot, "B"),
@@ -283,7 +283,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_SkipsBlacklistedFiles()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine("A", FileExcludedFromInstall),
                 Path.Combine(DirAtRoot, "B"),
@@ -308,7 +308,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     {
         var modFile = Path.Combine(DirAtRoot, "A");
 
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [DeletionName(modFile)]),
         ]);
         CreateGameFile(modFile, "Orig");
@@ -322,7 +322,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_GivesPriotiryToFilesLaterInTheModList()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine(DirAtRoot, "A")
             ]),
@@ -346,7 +346,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_DuplicatesAreCaseInsensitive()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine("X", DirAtRoot, "A"),
                 Path.Combine("Y", DirAtRoot, "a")
@@ -366,7 +366,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_StopsAfterAnyError()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine(DirAtRoot, "A")
             ]),
@@ -409,7 +409,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     public void Install_PreventsFileCreationTimeInTheFuture()
     {
         var future = DateTime.Now.AddMinutes(1);
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine(DirAtRoot, "A")
             ], extractedDir =>
@@ -428,7 +428,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
         var modFile = Path.Combine(DirAtRoot, "A");
         var toBeDeleted = "B";
 
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [modFile, DeletionName(toBeDeleted)]),
         ]);
         CreateGameFile(modFile, "OrigA");
@@ -444,7 +444,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     public void Install_OldVehiclesRequireBootfiles()
     {
         var drivelineRecord = $"RECORD foo";
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine("Foo", DirAtRoot, "Vehicle.crd")
             ], extractedDir =>
@@ -463,7 +463,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_NewVehiclesDoNotRequireBootfiles()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [
                 Path.Combine(DirAtRoot, "Vehicle.crd"),
                 BaseInstaller.GameSupportedModDirectory
@@ -479,7 +479,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_AllTracksRequireBootfiles()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [Path.Combine(DirAtRoot, "Track.trd")]),
             CreateCustomBootfiles(900),
         ]);
@@ -494,7 +494,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_ExtractsBootfilesFromGameByDefault()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [Path.Combine(DirAtRoot, "Foo.crd")])
         ]);
 
@@ -512,7 +512,7 @@ public class ModManagerIntegrationTest : AbstractFilesystemTest
     [Fact]
     public void Install_ChoosesFirstOfMultipleCustomBootfiles()
     {
-        modRepositoryMock.Setup(_ => _.ListEnabledMods()).Returns([
+        modRepositoryMock.Setup(_ => _.ListPackages()).Returns([
             CreateModArchive(100, [Path.Combine(DirAtRoot, "Foo.crd")]),
             CreateCustomBootfiles(900),
             CreateCustomBootfiles(901)

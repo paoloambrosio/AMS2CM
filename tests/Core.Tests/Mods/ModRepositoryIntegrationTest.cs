@@ -25,7 +25,7 @@ public class ModRepositoryIntegrationTest : AbstractFilesystemTest
             @"Disabled\File4.Ext"
         );
 
-        modRepository.ListEnabledMods().Select(_ => _ with { FsHash = NotChecked })
+        modRepository.ListPackages().Select(_ => _ with { FsHash = NotChecked })
             .Should().BeEquivalentTo(new ModPackage[] {
                 new("File1.Ext", Path.Combine(testDir.FullName, @"Enabled\File1.Ext"), true, NotChecked),
                 new("File2.Ext", Path.Combine(testDir.FullName, @"Enabled\File2.Ext"), true, NotChecked)
@@ -48,7 +48,7 @@ public class ModRepositoryIntegrationTest : AbstractFilesystemTest
             @"Disabled\Dir4\SubDir\Content"
         );
 
-        modRepository.ListEnabledMods()
+        modRepository.ListPackages()
             .Should().BeEquivalentTo(new ModPackage[] {
                 new(@"Dir1\", Path.Combine(testDir.FullName, @"Enabled\Dir1"), true, null),
                 new(@"Dir2\", Path.Combine(testDir.FullName, @"Enabled\Dir2"), true, null)
@@ -67,7 +67,7 @@ public class ModRepositoryIntegrationTest : AbstractFilesystemTest
             @"Disabled\File.Ext"
         );
 
-        modRepository.EnableMod(TestPath(@"Disabled\File.Ext"));
+        modRepository.EnablePackage(TestPath(@"Disabled\File.Ext"));
 
         File.Exists(TestPath(@"Enabled\File.Ext")).Should().BeTrue();
     }
@@ -79,7 +79,7 @@ public class ModRepositoryIntegrationTest : AbstractFilesystemTest
             @"Disabled\Dir\Contents"
         );
 
-        modRepository.EnableMod(TestPath(@"Disabled\Dir"));
+        modRepository.EnablePackage(TestPath(@"Disabled\Dir"));
 
         Directory.Exists(TestPath(@"Enabled\Dir")).Should().BeTrue();
     }
@@ -91,7 +91,7 @@ public class ModRepositoryIntegrationTest : AbstractFilesystemTest
             @"Enabled\File.Ext"
         );
 
-        modRepository.DisableMod(TestPath(@"Enabled\File.Ext"));
+        modRepository.DisablePackage(TestPath(@"Enabled\File.Ext"));
 
         File.Exists(TestPath(@"Disabled\File.Ext")).Should().BeTrue();
     }
@@ -103,7 +103,7 @@ public class ModRepositoryIntegrationTest : AbstractFilesystemTest
             @"Enabled\Dir\Contents"
         );
 
-        modRepository.DisableMod(TestPath(@"Enabled\Dir"));
+        modRepository.DisablePackage(TestPath(@"Enabled\Dir"));
 
         Directory.Exists(TestPath(@"Disabled\Dir")).Should().BeTrue();
     }

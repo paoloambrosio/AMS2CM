@@ -46,11 +46,11 @@ internal class ModManager : IModManager
     public List<ModState> FetchState()
     {
         var installedMods = statePersistence.ReadState().Install.Mods;
-        var enabledModPackages = modRepository.ListEnabledMods().ToDictionary(_ => _.PackageName);
+        var enabledModPackages = modRepository.ListPackages().ToDictionary(_ => _.PackageName);
         var disabledModPackages = modRepository.ListDisabledMods().ToDictionary(_ => _.PackageName);
         var availableModPackages = enabledModPackages.Merge(disabledModPackages);
 
-        var bootfilesFailed = installedMods.Where(kv => BootfilesManager.IsBootFiles(kv.Key) && (kv.Value?.Partial ?? false)).Any();
+        var bootfilesFailed = installedMods.Where(kv => BootfilesMod.IsBootFiles(kv.Key) && (kv.Value?.Partial ?? false)).Any();
         var isModInstalled = installedMods.SelectValues<string, ModInstallationState, bool?>(modInstallationState =>
             modInstallationState is null ? false : ((modInstallationState.Partial || bootfilesFailed) ? null : true)
         );
@@ -61,7 +61,7 @@ internal class ModManager : IModManager
         });
 
         var allPackageNames = installedMods.Keys
-            .Where(_ => !BootfilesManager.IsBootFiles(_))
+            .Where(_ => !BootfilesMod.IsBootFiles(_))
             .Concat(enabledModPackages.Keys)
             .Concat(disabledModPackages.Keys)
             .Distinct();
@@ -101,7 +101,7 @@ internal class ModManager : IModManager
             throw new Exception($"{packageFullPath} is a directory");
         }
 
-        var modPackage = modRepository.UploadMod(packageFullPath);
+        var modPackage = modRepository.UploadPackage(packageFullPath);
         statePersistence.ReadState().Install.Mods.TryGetValue(modPackage.PackageName, out var modInstallationState);
 
         return new ModState(
@@ -121,12 +121,12 @@ internal class ModManager : IModManager
 
     public string EnableMod(string packagePath)
     {
-        return modRepository.EnableMod(packagePath);
+        return modRepository.EnablePackage(packagePath);
     }
 
     public string DisableMod(string packagePath)
     {
-        return modRepository.DisableMod(packagePath);
+        return modRepository.DisablePackage(packagePath);
     }
 
     public void InstallEnabledMods(IEventHandler eventHandler, CancellationToken cancellationToken = default)
@@ -138,7 +138,7 @@ internal class ModManager : IModManager
 
         // Clean what left by a previous failed installation
         tempDir.Cleanup();
-        UpdateMods(modRepository.ListEnabledMods(), eventHandler, cancellationToken);
+        UpdateMods(modRepository.ListPackages(), eventHandler, cancellationToken);
         tempDir.Cleanup();
     }
 

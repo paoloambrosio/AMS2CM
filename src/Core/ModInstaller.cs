@@ -7,7 +7,7 @@ using Microsoft.Extensions.FileSystemGlobbing;
 
 namespace Core;
 
-public class ModInstaller : IModInstaller
+public partial class ModInstaller : IModInstaller
 {
     public interface IEventHandler : IProgress
     {
@@ -15,14 +15,6 @@ public class ModInstaller : IModInstaller
         void InstallStart();
         void InstallCurrent(string packageName);
         void InstallEnd();
-
-        void PostProcessingNotRequired();
-        void PostProcessingStart();
-        void ExtractingBootfiles(string? packageName);
-        void PostProcessingVehicles();
-        void PostProcessingTracks();
-        void PostProcessingDrivelines();
-        void PostProcessingEnd();
 
         void UninstallNoMods();
         void UninstallStart();
@@ -157,7 +149,7 @@ public class ModInstaller : IModInstaller
         IEventHandler eventHandler,
         CancellationToken cancellationToken)
     {
-        var modPackages = toInstall.Where(p => !BootfilesManager.IsBootFiles(p.PackageName)).Reverse().ToImmutableArray();
+        var modPackages = toInstall.Where(p => !BootfilesMod.IsBootFiles(p.PackageName)).Reverse().ToImmutableArray();
 
         var modConfigs = new List<ConfigEntries>();
         var installedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -191,6 +183,7 @@ public class ModInstaller : IModInstaller
                 eventHandler.ProgressUpdate(progress.IncrementDone());
             }
 
+            // TODO Move this into the bootfiles mod logic?
             if (modConfigs.Any(c => c.NotEmpty()))
             {
                 eventHandler.PostProcessingStart();
@@ -199,7 +192,7 @@ public class ModInstaller : IModInstaller
                 {
                     var backupStrategy = modBackupStrategyProvider.BackupStrategy(null);
                     bootfilesMod.Install(installDir, backupStrategy, installCallbacks);
-                    bootfilesMod.PostProcessing(installDir, modConfigs, eventHandler);
+                    bootfilesMod.PostProcessing(installDir, modConfigs);
                 }
                 finally
                 {
@@ -219,57 +212,5 @@ public class ModInstaller : IModInstaller
             eventHandler.InstallNoMods();
         }
         eventHandler.ProgressUpdate(progress.DoneAll());
-    }
-
-    private BootfilesMod CreateBootfilesMod(IReadOnlyCollection<ModPackage> packages, IEventHandler eventHandler)
-    {
-        var bootfilesPackage = packages.FirstOrDefault(p => BootfilesManager.IsBootFiles(p.PackageName));
-        if (bootfilesPackage is null)
-        {
-            eventHandler.ExtractingBootfiles(null);
-            return new BootfilesMod(installationFactory.GeneratedBootfilesInstaller());
-        }
-        eventHandler.ExtractingBootfiles(bootfilesPackage.PackageName);
-        return new BootfilesMod(installationFactory.ModInstaller(bootfilesPackage));
-    }
-
-    private class BootfilesMod : IInstaller
-    {
-        private readonly IInstaller inner;
-        private bool postProcessingDone;
-
-        public BootfilesMod(IInstaller inner)
-        {
-            this.inner = inner;
-            postProcessingDone = false;
-        }
-
-        public string PackageName => inner.PackageName;
-
-        public IInstallation.State Installed =>
-            inner.Installed == IInstallation.State.Installed && !postProcessingDone
-                ? IInstallation.State.PartiallyInstalled
-                : inner.Installed;
-
-        public IReadOnlyCollection<string> InstalledFiles => inner.InstalledFiles;
-
-        public int? PackageFsHash => inner.PackageFsHash;
-
-        public ConfigEntries Install(string dstPath, IInstallationBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
-        {
-            inner.Install(dstPath, backupStrategy, callbacks);
-            return ConfigEntries.Empty;
-        }
-
-        public void PostProcessing(string dstPath, IReadOnlyList<ConfigEntries> modConfigs, IEventHandler eventHandler)
-        {
-            eventHandler.PostProcessingVehicles();
-            PostProcessor.AppendCrdFileEntries(dstPath, modConfigs.SelectMany(c => c.CrdFileEntries));
-            eventHandler.PostProcessingTracks();
-            PostProcessor.AppendTrdFileEntries(dstPath, modConfigs.SelectMany(c => c.TrdFileEntries));
-            eventHandler.PostProcessingDrivelines();
-            PostProcessor.AppendDrivelineRecords(dstPath, modConfigs.SelectMany(c => c.DrivelineRecords));
-            postProcessingDone = true;
-        }
     }
 }
