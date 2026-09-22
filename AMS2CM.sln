@@ -17,12 +17,18 @@ Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "Installer", "src\Installer\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Core.Tests", "tests\Core.Tests\Core.Tests.csproj", "{C6534E1B-8131-46A6-B826-F669A0FDAAE3}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GUI.Tests", "tests\GUI.Tests\GUI.Tests.csproj", "{2DF32929-72B0-45B5-981A-E6DCA3156C13}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2DF32929-72B0-45B5-981A-E6DCA3156C13}.Debug|x64.ActiveCfg = Debug|x64
+		{2DF32929-72B0-45B5-981A-E6DCA3156C13}.Debug|x64.Build.0 = Debug|x64
+		{2DF32929-72B0-45B5-981A-E6DCA3156C13}.Release|x64.ActiveCfg = Release|x64
+		{2DF32929-72B0-45B5-981A-E6DCA3156C13}.Release|x64.Build.0 = Release|x64
 		{77400FE1-383E-4D92-9A7F-D4AEA8A1AE0C}.Debug|x64.ActiveCfg = Debug|x64
 		{77400FE1-383E-4D92-9A7F-D4AEA8A1AE0C}.Debug|x64.Build.0 = Debug|x64
 		{77400FE1-383E-4D92-9A7F-D4AEA8A1AE0C}.Release|x64.ActiveCfg = Release|x64
@@ -33,10 +39,8 @@ Global
 		{A20048F0-D212-499D-8CCF-5E0B989E21F7}.Release|x64.Build.0 = Release|x64
 		{2C96062E-2EDF-4BBE-8BC2-968B7A1F4EFE}.Debug|x64.ActiveCfg = Debug|x64
 		{2C96062E-2EDF-4BBE-8BC2-968B7A1F4EFE}.Debug|x64.Build.0 = Debug|x64
-		{2C96062E-2EDF-4BBE-8BC2-968B7A1F4EFE}.Debug|x64.Deploy.0 = Debug|x64
 		{2C96062E-2EDF-4BBE-8BC2-968B7A1F4EFE}.Release|x64.ActiveCfg = Release|x64
 		{2C96062E-2EDF-4BBE-8BC2-968B7A1F4EFE}.Release|x64.Build.0 = Release|x64
-		{2C96062E-2EDF-4BBE-8BC2-968B7A1F4EFE}.Release|x64.Deploy.0 = Release|x64
 		{E7C3F070-53AC-422B-A616-F38DD3A2CB77}.Debug|x64.ActiveCfg = Debug|x64
 		{E7C3F070-53AC-422B-A616-F38DD3A2CB77}.Debug|x64.Build.0 = Debug|x64
 		{E7C3F070-53AC-422B-A616-F38DD3A2CB77}.Release|x64.ActiveCfg = Release|x64

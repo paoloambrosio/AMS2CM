@@ -1,0 +1,25 @@
+﻿<Window
+    x:Class="AMS2CM.GUI.SyncDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Synchronization" Icon="/Assets/AMS2CM.ico"
+    Width="460" SizeToContent="Height" CanResize="False"
+    WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+    Closing="Window_Closing">
+  <StackPanel Margin="20" Spacing="16">
+    <Expander x:Name="LogExpander" HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Stretch">
+      <Expander.Header>
+        <ProgressBar x:Name="Progress" Width="320" IsIndeterminate="True" />
+      </Expander.Header>
+      <ScrollViewer Height="300">
+        <SelectableTextBlock x:Name="Logs" TextWrapping="Wrap" />
+      </ScrollViewer>
+    </Expander>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="AbortButton" Content="Abort" Click="AbortButton_Click" />
+      <Button x:Name="CloseButton" Content="Close" Classes="accent"
+              IsEnabled="False" Click="CloseButton_Click" />
+    </StackPanel>
+  </StackPanel>
+</Window>

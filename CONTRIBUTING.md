@@ -2,6 +2,16 @@
 
 ## Development
 
+The desktop GUI uses Avalonia with the Fluent theme. It currently targets Windows
+on .NET 10, matching Core and the MSI installer.
+
+```powershell
+dotnet run --project src/GUI/GUI.csproj -p:Platform=x64
+dotnet test tests/GUI.Tests/GUI.Tests.csproj -p:Platform=x64
+```
+
+The GUI tests use Avalonia's headless backend and do not modify a game installation.
+
 The project is currently in a state of flux. Accepting contributions is going
 to be challenging for a few weeks until it converges to a stable state.
 

@@ -1,0 +1,17 @@
+﻿<Window
+    x:Class="AMS2CM.GUI.ErrorDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="AMS2CM Error" Icon="/Assets/AMS2CM.ico"
+    Width="520" SizeToContent="Height" CanResize="False"
+    WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="20" Spacing="16">
+    <ScrollViewer MaxHeight="400">
+      <SelectableTextBlock x:Name="Message" TextWrapping="Wrap" />
+    </ScrollViewer>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="Copy Details" Click="CopyDetails_Click" />
+      <Button Content="Exit" Classes="accent" IsDefault="True" IsCancel="True" Click="Exit_Click" />
+    </StackPanel>
+  </StackPanel>
+</Window>

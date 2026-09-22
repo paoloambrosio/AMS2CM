@@ -1,0 +1,65 @@
+﻿<Window
+    x:Class="AMS2CM.GUI.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AMS2CM.GUI"
+    Title="Automobilista 2 Content Manager"
+    Icon="/Assets/AMS2CM.ico"
+    Width="600" Height="600" MinWidth="420" MinHeight="300"
+    Opened="Window_Opened">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <StackPanel x:Name="NewVersionBlock" Margin="18,10,14,10" IsVisible="False">
+      <TextBlock Text="A new version of AMS2CM is available for download on" TextWrapping="Wrap" />
+      <Button Content="RaceDepartment" Click="NewVersionLink_Click" />
+    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="40,40,*" Margin="12,10">
+      <TextBlock Text="↓" FontSize="20" HorizontalAlignment="Center" ToolTip.Tip="Installed" />
+      <TextBlock Grid.Column="1" Text="⇥" FontSize="20" HorizontalAlignment="Center" ToolTip.Tip="To Install" />
+    </Grid>
+    <ListBox
+        Grid.Row="2"
+        x:Name="ModListView"
+        SelectionMode="Multiple"
+        DragDrop.AllowDrop="True"
+        DragDrop.DragOver="ModListView_DragOver"
+        DragDrop.Drop="ModListView_Drop"
+        KeyDown="ModListView_KeyDown">
+      <ListBox.Styles>
+        <Style Selector="ListBoxItem">
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+      </ListBox.Styles>
+      <ListBox.ContextMenu>
+        <ContextMenu>
+          <MenuItem Header="Enable" Click="ModListMenuEnable_Click" />
+          <MenuItem Header="Disable" Click="ModListMenuDisable_Click" />
+          <MenuItem Header="Add" Click="ModListMenuAdd_Click" />
+          <MenuItem Header="Delete" InputGesture="Delete" Click="ModListMenuDelete_Click" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="local:ModVM">
+          <Grid ColumnDefinitions="40,40,*,40">
+            <CheckBox MinWidth="0" IsThreeState="True"
+                      IsChecked="{Binding IsInstalled, Mode=OneWay}" IsEnabled="False" />
+            <CheckBox Grid.Column="1" MinWidth="0" IsThreeState="False"
+                      IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                      IsEnabled="{Binding IsAvailable, Mode=OneWay}" />
+            <TextBlock Grid.Column="2" VerticalAlignment="Center"
+                       Text="{Binding DisplayName}" ToolTip.Tip="{Binding PackageName}" />
+            <TextBlock Grid.Column="3" Text="↻" FontSize="20" VerticalAlignment="Center"
+                       IsVisible="{Binding IsOutOfDate}" ToolTip.Tip="Out of date" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <SplitButton Grid.Row="3" Content="Apply" Margin="18,10,14,10"
+                 HorizontalAlignment="Center" Click="ApplyButton_Click">
+      <SplitButton.Flyout>
+        <MenuFlyout Placement="Bottom">
+          <MenuItem Header="Uninstall All" Click="UninstallAllItem_Click" />
+        </MenuFlyout>
+      </SplitButton.Flyout>
+    </SplitButton>
+  </Grid>
+</Window>
