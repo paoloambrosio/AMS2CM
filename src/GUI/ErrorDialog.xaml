@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    Title="Unable to continue"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
     Style="{StaticResource DefaultContentDialogStyle}"
     PrimaryButtonText="Copy Details"
@@ -13,7 +14,14 @@
     CloseButtonText="Exit"
     DefaultButton="Close">
 
-  <TextBlock x:Name="Message"
+  <StackPanel Spacing="16" MaxWidth="440">
+    <TextBlock Text="Copy the details below if you need help resolving this issue." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+    <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+      <ScrollViewer MaxHeight="280" HorizontalScrollBarVisibility="Disabled">
+        <TextBlock x:Name="Message"
       TextWrapping="Wrap"
       IsTextSelectionEnabled="True"/>
+      </ScrollViewer>
+    </Border>
+  </StackPanel>
 </ContentDialog>

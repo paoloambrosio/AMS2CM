@@ -19,6 +19,7 @@ public sealed partial class SyncDialog : ContentDialog
     {
         args.Cancel = true;
         IsPrimaryButtonEnabled = false;
+        StatusText.Text = "Stopping after the current operation…";
         Logs.Text += $"Aborting...{Environment.NewLine}";
         Progress.ShowPaused = true;
         cancellationTokenSource.Cancel();
@@ -30,6 +31,16 @@ public sealed partial class SyncDialog : ContentDialog
         {
             IsPrimaryButtonEnabled = false;
             IsSecondaryButtonEnabled = true;
+            Progress.IsIndeterminate = false;
+            Title = Progress.ShowError ? "Something needs attention"
+                : cancellationTokenSource.IsCancellationRequested ? "Operation stopped" : "All done";
+            StatusText.Text = Progress.ShowError ? "Open activity details to review the error."
+                : cancellationTokenSource.IsCancellationRequested ? "The operation was stopped. You can close this window."
+                : "Your mod library has been updated. You can close this window.";
+            if (!Progress.ShowError && !cancellationTokenSource.IsCancellationRequested)
+            {
+                Progress.Value = 100;
+            }
         });
     }
 

@@ -19,7 +19,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(IModManager modManager, IUpdateChecker updateChecker)
     {
         InitializeComponent();
-        AppWindow.Resize(new SizeInt32 { Width = 600, Height = 600 });
+        AppWindow.Resize(new SizeInt32 { Width = 860, Height = 720 });
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "AMS2CM.ico"));
         this.modManager = modManager;
         this.updateChecker = updateChecker;
@@ -70,11 +70,34 @@ public sealed partial class MainWindow : Window
 
     private void SyncModListView()
     {
+        foreach (var mod in modList)
+        {
+            mod.PropertyChanged -= Mod_PropertyChanged;
+        }
         modList.Clear();
         foreach (var modState in modManager.FetchState().OrderBy(_ => _.PackageName))
         {
-            modList.Add(new ModVM(modState, modManager));
+            var mod = new ModVM(modState, modManager);
+            mod.PropertyChanged += Mod_PropertyChanged;
+            modList.Add(mod);
         }
+        UpdateLibrarySummary();
+    }
+
+    private void Mod_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ModVM.IsEnabled))
+        {
+            UpdateLibrarySummary();
+        }
+    }
+
+    private void UpdateLibrarySummary()
+    {
+        var installed = modList.Count(mod => mod.IsInstalled == true);
+        var enabled = modList.Count(mod => mod.IsEnabled);
+        LibrarySummary.Text = $"{modList.Count} packages  ·  {installed} installed  ·  {enabled} enabled";
+        EmptyState.Visibility = modList.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ModListView_DragOver(object sender, DragEventArgs e)
