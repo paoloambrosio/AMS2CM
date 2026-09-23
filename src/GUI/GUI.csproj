@@ -1,8 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Uno.Sdk/6.7.30">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <TargetFramework>net10.0-desktop</TargetFramework>
+    <UnoSingleProject>true</UnoSingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Company>OpenSimTools</Company>
@@ -10,13 +10,11 @@
     <AssemblyName>AMS2CM.GUI</AssemblyName>
     <RootNamespace>AMS2CM.GUI</RootNamespace>
     <Platforms>x64</Platforms>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <UseWinUI>true</UseWinUI>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <RuntimeIdentifier>win-$(Platform)</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <UnoFeatures>SkiaRenderer</UnoFeatures>
     <ApplicationIcon>..\Shared\AMS2CM.ico</ApplicationIcon>
-    <!-- https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/release-notes-archive/experimental-channel-1.2#other-limitations-and-known-issues -->
-    <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,45 +25,20 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250916003" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.6584" />
-    <PackageReference Include="WinUIEx" Version="2.8.0" />
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatform">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="..\Shared\Config.yaml">
+      <Link>Config.yaml</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="..\Shared\AMS2CM.ico">
+      <Link>AMS2CM.ico</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
-  <ItemGroup>
-    <None Remove="ErrorDialog.xaml" />
-    <None Remove="SyncDialog.xaml" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Page Update="ErrorDialog.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Update="SyncDialog.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-  </ItemGroup>
-
-  <!-- From https://youtu.be/LHNahJi21Vg -->
-  <Target Name="RemoveUnsupportedLanguages" AfterTargets="Build">
-    <ItemGroup>
-      <LangFilesToRemove Include="$(OutDir)*\*.mui" Exclude="$(OutDir)en-us\*.mui" />
-      <LangDirsToRemove Include="@(LangFilesToRemove->'%(RootDir)%(Directory)')" />
-    </ItemGroup>
-    <RemoveDir Directories="@(LangDirsToRemove)" />
-  </Target>
-
-  <!-- Remove files for unsupported platforms -->
-  <Target Name="RemoveUnsupportedPlatformFiles" AfterTargets="Build">
-    <RemoveDir Directories="$(OutDir)\runtimes\win10-arm64;$(OutDir)\runtimes\win10-x86;$(OutDir)\runtimes\osx-any64;$(OutDir)\runtimes\linux-x64" />
-  </Target>
 </Project>

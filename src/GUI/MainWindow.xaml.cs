@@ -6,11 +6,11 @@ using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
-using WinUIEx;
+using Windows.Graphics;
 
 namespace AMS2CM.GUI;
 
-public sealed partial class MainWindow : WindowEx
+public sealed partial class MainWindow : Window
 {
     private readonly ObservableCollection<ModVM> modList;
     private readonly IModManager modManager;
@@ -19,11 +19,16 @@ public sealed partial class MainWindow : WindowEx
     public MainWindow(IModManager modManager, IUpdateChecker updateChecker)
     {
         InitializeComponent();
+        AppWindow.Resize(new SizeInt32 { Width = 600, Height = 600 });
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "AMS2CM.ico"));
         this.modManager = modManager;
         this.updateChecker = updateChecker;
         modList = new ObservableCollection<ModVM>();
         ModListView.ItemsSource = modList;
     }
+
+    private XamlRoot DialogRoot => Content?.XamlRoot
+        ?? throw new InvalidOperationException("The window must be loaded before showing a dialog.");
 
     private void Root_Loaded(object sender, RoutedEventArgs e)
     {
@@ -40,7 +45,7 @@ public sealed partial class MainWindow : WindowEx
 
     private async void ApplyButton_Click(Microsoft.UI.Xaml.Controls.SplitButton sender, Microsoft.UI.Xaml.Controls.SplitButtonClickEventArgs args)
     {
-        await SyncDialog.ShowAsync(Content.XamlRoot, (dialog, cancellationToken) =>
+        await SyncDialog.ShowAsync(DialogRoot, (dialog, cancellationToken) =>
         {
             var eventLogger = new SyncDialogEventLogger(dialog);
             modManager.InstallEnabledMods(eventLogger, cancellationToken);
@@ -52,7 +57,7 @@ public sealed partial class MainWindow : WindowEx
 
     private async void UninstallAllItem_Click(object sender, RoutedEventArgs e)
     {
-        await SyncDialog.ShowAsync(Content.XamlRoot, (dialog, cancellationToken) =>
+        await SyncDialog.ShowAsync(DialogRoot, (dialog, cancellationToken) =>
         {
             var eventLogger = new SyncDialogEventLogger(dialog);
             modManager.UninstallAllMods(eventLogger);
@@ -136,7 +141,7 @@ public sealed partial class MainWindow : WindowEx
 
     private async void ModListMenuAdd_Click(object sender, RoutedEventArgs e)
     {
-        var filePicker = this.CreateOpenFilePicker();
+        var filePicker = new FileOpenPicker();
         filePicker.ViewMode = PickerViewMode.List;
         filePicker.FileTypeFilter.Add("*");
 
@@ -163,7 +168,7 @@ public sealed partial class MainWindow : WindowEx
 
     public async void SignalErrorAsync(Exception exception)
     {
-        var dialog = new ErrorDialog(Content.XamlRoot, exception);
+        var dialog = new ErrorDialog(DialogRoot, exception);
         await dialog.ShowAsync();
         Close();
     }
@@ -175,7 +180,7 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        await SyncDialog.ShowAsync(Content.XamlRoot, filePaths, (dialog, filePath) =>
+        await SyncDialog.ShowAsync(DialogRoot, filePaths, (dialog, filePath) =>
             {
                 modManager.AddNewMod(filePath);
                 dialog.LogMessage(Path.GetFileName(filePath));
@@ -191,7 +196,7 @@ public sealed partial class MainWindow : WindowEx
             return;
         }
 
-        await SyncDialog.ShowAsync(Content.XamlRoot, filePaths, (dialog, filePath) =>
+        await SyncDialog.ShowAsync(DialogRoot, filePaths, (dialog, filePath) =>
         {
             modManager.DeleteMod(filePath);
             dialog.LogMessage(Path.GetFileName(filePath));
