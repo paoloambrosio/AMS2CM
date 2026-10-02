@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Core.Mods;
 using Core.Mods.Installation;
 using Core.Mods.Installation.Installers;
@@ -6,7 +5,6 @@ using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Tests.Packages.Installation;
-using Core.Tests.Packages.Installation.Installers;
 using Core.Utils;
 using FluentAssertions;
 
@@ -41,6 +39,7 @@ public class ModReconciliationServiceTest :
     {
         var bootfilesNamingMock = new Mock<IBootfilesNaming>();
         bootfilesNamingMock.Setup(m => m.IsBootfiles(BootfilesPackageName)).Returns(true);
+        bootfilesNamingMock.Setup(m => m.IsGeneratedBootfiles(GeneratedBootfilesName)).Returns(true);
         return new ModReconciliationService<PackageReconciliationService.IEventHandler>(
             backupStrategyProvider, bootfilesNamingMock.Object, this);
     }
@@ -94,10 +93,28 @@ public class ModReconciliationServiceTest :
         progress.Should().Equal(1.0);
     }
 
-    #region Utility Methods
+    [Fact]
+    public void Apply_UninstallsBootfilesWhenNotNeeded()
+    {
+        InstallationState = new Dictionary<string, PackageInstallationState>
+        {
+            ["A"] = new(Time: ValueNotUsed, VersionHash: null, Partial: false, Dependencies: [], Files:
+            [
+                "A1"
+            ], ShadowedBy: [BootfilesPackageName]),
+            [BootfilesPackageName] = new(Time: ValueNotUsed, VersionHash: 1, Partial: false, Dependencies: [], Files:
+            [
+                "B1"
+            ], ShadowedBy: [])
+        };
 
-    private IPackageInstaller InstallerOf(string name) =>
-        new StaticFilesInstaller(TestFileSystem, TestTimeProvider, name, null, ReadOnlyDictionary<string, string>.Empty, []);
+        Apply([
+            InstallerOf(BootfilesPackageName, versionHash: 1)
+        ]);
 
-    #endregion
+        InstallationState.Should().BeEmpty();
+
+        EventHandlerMock.Verify(m => m.UninstallingPackage(BootfilesPackageName), Times.Once);
+        EventHandlerMock.Verify(m => m.InstallingPackage(BootfilesPackageName), Times.Once);
+    }
 }

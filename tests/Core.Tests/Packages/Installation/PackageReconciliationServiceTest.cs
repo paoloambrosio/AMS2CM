@@ -18,9 +18,6 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
 
     private class TestException : Exception;
 
-    // Randomness ensures that at least some test runs will fail if it's used
-    private static readonly DateTimeOffset ValueNotUsed = Random.Shared.Next() > 0 ? DateTimeOffset.MaxValue : DateTimeOffset.MinValue;
-
     protected override IReconciliationService<PackageReconciliationService.IEventHandler> NewService(
         IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler> backupStrategyProvider) =>
         new PackageReconciliationService<PackageReconciliationService.IEventHandler>(backupStrategyProvider);
@@ -462,18 +459,13 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ], ShadowedBy: []),
         });
     }
-
-    private IPackageInstaller InstallerOf(string name, int? versionHash, IReadOnlyCollection<string> files) =>
-        InstallerOf(name, versionHash, files, Array.Empty<string>());
-
-    private IPackageInstaller InstallerOf(string name, int? versionHash,
-        IReadOnlyCollection<string> files, IReadOnlyCollection<string> dependencies) =>
-        new StaticFilesInstaller(TestFileSystem, TestTimeProvider,
-            name, versionHash, files.ToDictionary(f => f, _ => ""), dependencies);
 }
 
 public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventHandler : class
 {
+    // Randomness ensures that at least some test runs will fail if it's used
+    protected readonly DateTimeOffset ValueNotUsed = Random.Shared.Next() > 0 ? DateTimeOffset.MaxValue : DateTimeOffset.MinValue;
+
     protected readonly Mock<IBackupStrategy> BackupStrategyMock = new();
     protected readonly Mock<TEventHandler> EventHandlerMock = new();
 
@@ -519,4 +511,15 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
             EventHandlerMock.Object,
             CancellationToken.None);
     }
+
+    protected IPackageInstaller InstallerOf(string name, int? versionHash = null) =>
+        new StaticFilesInstaller(TestFileSystem, TestTimeProvider, name, versionHash, ReadOnlyDictionary<string, string>.Empty, []);
+
+    protected IPackageInstaller InstallerOf(string name, int? versionHash, IReadOnlyCollection<string> files) =>
+        InstallerOf(name, versionHash, files, Array.Empty<string>());
+
+    protected IPackageInstaller InstallerOf(string name, int? versionHash,
+        IReadOnlyCollection<string> files, IReadOnlyCollection<string> dependencies) =>
+        new StaticFilesInstaller(TestFileSystem, TestTimeProvider,
+            name, versionHash, files.ToDictionary(f => f, _ => ""), dependencies);
 }
