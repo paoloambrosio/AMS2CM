@@ -100,7 +100,7 @@ public class PackageReconciliationService<TEventHandler>(
             }
             else
             {
-                installOrKeepActions.Add(raf.Keep(packageName, state));
+                installOrKeepActions.Add(raf.Keep(installer, state));
             }
         }
 

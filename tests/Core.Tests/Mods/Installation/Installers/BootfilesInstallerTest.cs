@@ -1,4 +1,4 @@
-using System.IO.Abstractions.TestingHelpers;
+﻿using System.IO.Abstractions.TestingHelpers;
 using Core.Mods;
 using Core.Mods.Installation.Installers;
 using Core.Packages.Installation.Backup;
@@ -104,7 +104,7 @@ public class BootfilesInstallerTest
 
         var bootfiles = InstallBootfiles();
         bootfiles.InstalledFiles.Should().BeEquivalentTo(expected);
-        bootfiles.PackageVersionHash.Should().BeNull();
+        bootfiles.PackageVersionHash.Should().Be(42);
 
         eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
         eventHandlerMock.Verify(m => m.ExtractingBootfiles(null), Times.Once);
@@ -174,6 +174,63 @@ public class BootfilesInstallerTest
             .Should().Be(mod1Config + Environment.NewLine + mod2Config);
     }
 
+
+    [Fact]
+    public void Configure_ReplacesAndRemovesDrivelineBlocksWithoutABaseFile()
+    {
+        var modPath = Path.Combine(destDir, GameSupportedModDirectory, "Mod");
+        fs.AddFile(Path.Combine(modPath, TrackListFileName), "Track.trd");
+        fs.AddFile(Path.Combine(modPath, DrivelineFileName), "RECORD old");
+        var installer = InstallBootfiles();
+        var drivelinePath = Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName);
+
+        fs.File.WriteAllText(Path.Combine(modPath, DrivelineFileName), "RECORD new");
+        installer.Configure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var contents = fs.File.ReadAllText(drivelinePath);
+        contents.Should().Contain("RECORD new").And.NotContain("RECORD old");
+        contents.Split("### BEGIN AMS2CM").Should().HaveCount(2);
+
+        installer.Configure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        fs.File.ReadAllText(drivelinePath).Should().Be(contents);
+
+        fs.File.Delete(Path.Combine(modPath, DrivelineFileName));
+        installer.Configure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        fs.File.ReadAllText(drivelinePath).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Configure_BacksUpAndTracksNewConfigurationFiles()
+    {
+        var modPath = Path.Combine(destDir, GameSupportedModDirectory, "Mod");
+        fs.AddFile(Path.Combine(modPath, TrackListFileName), "Track.trd");
+        var installer = InstallBootfiles();
+        var vehiclePath = new RootedPath(destDir, Path.Combine(BootfilesVehicleListDir, VehicleListFileName));
+        fs.AddFile(vehiclePath.Full, "Original vehicle list");
+        fs.AddFile(Path.Combine(modPath, VehicleListFileName), "Vehicle.crd");
+        var callbacks = new Mock<Action<RootedPath>>();
+
+        installer.Configure(installer.InstalledFiles, backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath> { Before = callbacks.Object });
+
+        backupStrategyMock.Verify(m => m.PerformBackup(vehiclePath), Times.Once);
+        callbacks.Verify(m => m(vehiclePath), Times.Once);
+        fs.File.ReadAllText(vehiclePath.Full).Should().StartWith("Original vehicle list").And.Contain("Vehicle.crd");
+    }
+
+    [Fact]
+    public void Configure_DoesNotModifyConfigurationOwnedByAnotherPackage()
+    {
+        var modPath = Path.Combine(destDir, GameSupportedModDirectory, "Mod");
+        fs.AddFile(Path.Combine(modPath, TrackListFileName), "Track.trd");
+        var installer = InstallBootfiles();
+        var trackPath = new RootedPath(destDir, Path.Combine(BootfilesTrackListDir, TrackListFileName));
+        fs.File.WriteAllText(trackPath.Full, "Owned by another mod");
+
+        installer.Configure(installer.InstalledFiles.Where(p => p != trackPath).ToHashSet(), backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath> { Accept = path => path != trackPath });
+
+        fs.File.ReadAllText(trackPath.Full).Should().Be("Owned by another mod");
+    }
 
     #region Utility Methods
 

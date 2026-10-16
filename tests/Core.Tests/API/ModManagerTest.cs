@@ -1,4 +1,4 @@
-using Core.API;
+﻿using Core.API;
 using Core.Games;
 using Core.IO;
 using Core.Packages;
@@ -911,6 +911,184 @@ public class ModManagerTest : AbstractFilesystemTest
         modManager.InstallEnabledMods(eventHandlerMock.Object);
 
         persistedState.Should().HaveInstalled(["Package101", $"{BootfilesPrefix}901"]);
+    }
+
+    [Fact]
+    public void Install_KeepsUnchangedBootfilesEvenWhenUnrelatedModsChange()
+    {
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        var bootfiles = CreateCustomBootfiles(900);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        var originalState = persistedState.For(bootfiles.Name);
+        var configPath = GamePath(TrackListRelativePath).Full;
+        var originalContents = File.ReadAllText(configPath);
+        var writeTime = File.GetLastWriteTimeUtc(configPath);
+        eventHandlerMock.Invocations.Clear();
+
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
+            track, bootfiles, CreateModArchive(102, [Path.Combine(DirAtRoot, "Unrelated")])
+        ]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        persistedState.For(bootfiles.Name).Should().BeEquivalentTo(originalState);
+        File.ReadAllText(configPath).Should().Be(originalContents);
+        File.GetLastWriteTimeUtc(configPath).Should().Be(writeTime);
+        eventHandlerMock.Verify(m => m.UninstallingPackage(bootfiles.Name), Times.Never);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Never);
+        eventHandlerMock.Verify(m => m.ExtractingBootfiles(It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public void Install_ReconfiguresBootfilesWhenDependantsAreAddedUpdatedAndRemoved()
+    {
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        var bootfiles = CreateCustomBootfiles(900);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        var originalTime = persistedState.For(bootfiles.Name).Time;
+        eventHandlerMock.Invocations.Clear();
+
+        var additional = CreateModArchive(102, [
+            Path.Combine("Content", DirAtRoot, "Extra.trd"), Path.Combine("Content", DirAtRoot, "Extra.crd")
+        ], directory => File.WriteAllText(Path.Combine(directory, "README.txt"), "RECORD extra"));
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, additional, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Contain("Track.trd").And.Contain("Extra.trd");
+        File.ReadAllText(GamePath(VehicleListRelativePath).Full).Should().Contain("Extra.crd");
+        File.ReadAllText(GamePath(DrivelineRelativePath).Full).Should().Contain("RECORD extra");
+
+        var update = CreateModArchive(103, [Path.Combine(DirAtRoot, "Updated.trd")]);
+        var updatedTrack = new Package(track.Name, update.VersionHash, update.Location!);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([updatedTrack, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        var trackList = File.ReadAllText(GamePath(TrackListRelativePath).Full);
+        trackList.Should().Contain("Updated.trd").And.NotContain("Track.trd").And.NotContain("Extra.trd");
+        trackList.Split("### BEGIN AMS2CM").Should().HaveCount(2);
+        File.ReadAllText(GamePath(VehicleListRelativePath).Full).Should().Be("900");
+        File.ReadAllText(GamePath(DrivelineRelativePath).Full).Should().Be($"900{Environment.NewLine}END");
+        persistedState.For(bootfiles.Name).Time.Should().Be(originalTime);
+        eventHandlerMock.Verify(m => m.UninstallingPackage(bootfiles.Name), Times.Never);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Install_ReinstallsChangedBootfiles(bool changeName)
+    {
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        var bootfiles = CreateCustomBootfiles(900);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        eventHandlerMock.Invocations.Clear();
+
+        var replacement = CreateCustomBootfiles(901);
+        var updated = new Package(changeName ? replacement.Name : bootfiles.Name, replacement.VersionHash,
+            replacement.Location!);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, updated]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        persistedState.Should().HaveInstalled([track.Name, updated.Name]);
+        persistedState.For(track.Name).Dependencies.Should().Equal(updated.Name);
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().StartWith("901").And.Contain("Track.trd");
+        eventHandlerMock.Verify(m => m.UninstallingPackage(bootfiles.Name), Times.Once);
+        eventHandlerMock.Verify(m => m.InstallingPackage(updated.Name), Times.Once);
+        eventHandlerMock.Verify(m => m.InstallingPackage(track.Name), Times.Never);
+    }
+
+    [Fact]
+    public void Install_RemovesUnneededBootfilesWithoutDeletingNewModFiles()
+    {
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        var bootfiles = CreateCustomBootfiles(900);
+        var sharedPath = Path.Combine(DirAtRoot, "OrTheyWontBeInstalled");
+        CreateFile(GamePath(sharedPath), "Original");
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        eventHandlerMock.Invocations.Clear();
+
+        var replacement = CreateModArchive(102, [sharedPath]);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([replacement, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        persistedState.Should().HaveInstalled([replacement.Name]);
+        File.ReadAllText(GamePath(sharedPath).Full).Should().Be("102");
+        File.ReadAllText(GamePath(BackupName(sharedPath)).Full).Should().Be("Original");
+        eventHandlerMock.Verify(m => m.UninstallingPackage(bootfiles.Name), Times.Once);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Never);
+        modManager.UninstallAllMods(eventHandlerMock.Object);
+        File.ReadAllText(GamePath(sharedPath).Full).Should().Be("Original");
+    }
+
+    [Fact]
+    public void Install_ReconfigurationPreservesOriginalBackups()
+    {
+        CreateFile(GamePath(TrackListRelativePath), "Original tracks");
+        var bootfiles = CreateCustomBootfiles(900);
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
+            track, bootfiles, CreateModArchive(102, [Path.Combine(DirAtRoot, "Extra.trd")])
+        ]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        File.ReadAllText(GamePath(BackupName(TrackListRelativePath)).Full).Should().Be("Original tracks");
+
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        persistedState.Should().BeEmpty();
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Be("Original tracks");
+        File.Exists(GamePath(BackupName(TrackListRelativePath)).Full).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Install_RepairsFailedBootfilesReconfiguration()
+    {
+        var bootfiles = CreateCustomBootfiles(900);
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
+            track, bootfiles, CreateModArchive(102, [Path.Combine(DirAtRoot, "Extra.trd")])
+        ]);
+
+        using (File.OpenRead(GamePath(TrackListRelativePath).Full))
+        {
+            modManager.Invoking(m => m.InstallEnabledMods(eventHandlerMock.Object)).Should().Throw<IOException>();
+        }
+
+        persistedState.For(bootfiles.Name).Partial.Should().BeTrue();
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        persistedState.For(bootfiles.Name).Partial.Should().BeFalse();
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Contain("Track.trd").And.Contain("Extra.trd");
+    }
+
+    [Fact]
+    public void Install_RefreshesBootfilesAfterCancellationFollowingModInstallation()
+    {
+        var bootfiles = CreateCustomBootfiles(900);
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        var extra = CreateModArchive(102, [Path.Combine(DirAtRoot, "Extra.trd")]);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles, extra]);
+        using var cancellation = new CancellationTokenSource();
+        eventHandlerMock.Setup(m => m.InstallingPackage(extra.Name)).Callback(cancellation.Cancel);
+
+        modManager.InstallEnabledMods(eventHandlerMock.Object, cancellation.Token);
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().NotContain("Extra.trd");
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Contain("Extra.trd");
+        eventHandlerMock.Verify(m => m.InstallingPackage(extra.Name), Times.Once);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Once);
     }
 
     #region Utility methods

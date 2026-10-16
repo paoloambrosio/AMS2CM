@@ -36,6 +36,11 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
 
         public IReconciliationAction Keep(string packageName, PackageInstallationState state) =>
             new KeepAction(packageName, state, this);
+
+        public IReconciliationAction Keep(IPackageInstaller installer, PackageInstallationState state) =>
+            installer is IReconfigurablePackageInstaller configurable
+                ? new ConfigureAction(configurable, state, this)
+                : Keep(installer.PackageName, state);
     }
 
     private class InstallAction : ReconciliationAction<TEventHandler>, IReconciliationAction
@@ -93,7 +98,7 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
             DeleteEmptyDirectories(filesToUninstall);
         }
 
-        private static void DeleteEmptyDirectories(IReadOnlyCollection<RootedPath> filePaths)
+        internal static void DeleteEmptyDirectories(IReadOnlyCollection<RootedPath> filePaths)
         {
             var dirs = filePaths
                 .SelectMany(file => AncestorsUpTo(file.Root, file.Full))
@@ -141,6 +146,50 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
             {
                 callbacksAndRemoveShadowed.Wrap(() => {}, new RootedPath(InstallDir, relativePath));
             }
+            CurrentInstallState = IInstallation.State.Installed;
+        }
+    }
+
+    private class ConfigureAction(
+        IReconfigurablePackageInstaller installer,
+        PackageInstallationState state,
+        Factory factory) : StateBasedAction(installer.PackageName, state, factory), IReconciliationAction
+    {
+        public void Execute(ProcessingCallbacks<RootedPath> callbacks)
+        {
+            CurrentInstallState = IInstallation.State.PartiallyInstalled;
+            if (!installer.IsRequired)
+            {
+                EventHandler.UninstallingPackage(PackageName);
+                var filesToUninstall = CurrentInstalledFiles
+                    .Select(path => new RootedPath(InstallDir, path)).ToImmutableArray();
+                foreach (var path in filesToUninstall)
+                {
+                    // A newly installed mod may now own a former bootfiles path.
+                    if (callbacks.Accept(path))
+                    {
+                        BackupStrategy.RestoreBackup(path);
+                    }
+
+                    CurrentInstalledFiles.Remove(path.Relative);
+                }
+
+                CurrentInstallState = IInstallation.State.NotInstalled;
+                UninstallAction.DeleteEmptyDirectories(filesToUninstall);
+                return;
+            }
+
+            EventHandler.SkippingPackage(PackageName);
+            var keepCallbacks = callbacks.AndNotAccepted(path => CurrentInstalledFiles.Remove(path.Relative));
+            foreach (var relativePath in CurrentInstalledFiles.ToImmutableArray())
+            {
+                keepCallbacks.Wrap(() => { }, new RootedPath(InstallDir, relativePath));
+            }
+
+            installer.Configure(
+                CurrentInstalledFiles.Select(path => new RootedPath(InstallDir, path)).ToImmutableHashSet(),
+                BackupStrategy,
+                callbacks.AndBefore(path => CurrentInstalledFiles.Add(path.Relative)));
             CurrentInstallState = IInstallation.State.Installed;
         }
     }

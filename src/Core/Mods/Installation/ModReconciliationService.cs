@@ -22,6 +22,12 @@ public class ModReconciliationService<TEventHandler>(
             .Partition(p => bootfilesNaming.IsBootfiles(p.PackageName));
         var bootfilesInstaller = CreateBootfilesInstaller(bootfiles, eventHandler);
 
+        if (bootfilesInstaller is BootfilesInstaller configurableBootfiles)
+        {
+            configurableBootfiles.Prepare(previousState
+                .FirstOrDefault(p => bootfilesNaming.IsBootfiles(p.Key)).Value);
+        }
+
         var modInstallers = notBootfiles
             .Select(i => modInstallerFactory.ModInstaller(i, bootfilesInstaller))
             .Append(bootfilesInstaller).ToImmutableArray();

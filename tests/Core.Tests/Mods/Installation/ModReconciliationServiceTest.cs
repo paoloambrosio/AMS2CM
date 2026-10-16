@@ -1,4 +1,4 @@
-using Core.Mods;
+﻿using Core.Mods;
 using Core.Mods.Installation;
 using Core.Mods.Installation.Installers;
 using Core.Packages.Installation;
@@ -26,6 +26,7 @@ public class ModReconciliationServiceTest :
     {
         var bootfilesNamingMock = new Mock<IBootfilesNaming>();
         bootfilesNamingMock.Setup(m => m.IsBootfiles(BootfilesPackageName)).Returns(true);
+        bootfilesNamingMock.Setup(m => m.IsBootfiles(GeneratedBootfilesName)).Returns(true);
         bootfilesNamingMock.Setup(m => m.IsGeneratedBootfiles(GeneratedBootfilesName)).Returns(true);
         return new ModReconciliationService<PackageReconciliationService.IEventHandler>(
             backupStrategyProvider, bootfilesNamingMock.Object, this);
@@ -37,7 +38,7 @@ public class ModReconciliationServiceTest :
             : packageInstaller;
 
     public IPackageInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller, PackageReconciliationService.IEventHandler eventHandler) =>
-        bootfilesPackageInstaller ?? InstallerOf(GeneratedBootfilesName);
+        bootfilesPackageInstaller ?? InstallerOf(GeneratedBootfilesName, versionHash: 1);
 
     private class InstallerWithBootfilesDependency(IPackageInstaller inner, IPackageInstaller bootfiles) : IPackageInstaller
     {
@@ -141,5 +142,28 @@ public class ModReconciliationServiceTest :
         InstallationState.Keys.Should().BeEquivalentTo(ModRequiringBootfiles, "Untouched", GeneratedBootfilesName);
         InstallationState[ModRequiringBootfiles].Dependencies.Should().BeEquivalentTo([GeneratedBootfilesName]);
         InstallationState["Untouched"].Dependencies.Should().BeEquivalentTo([GeneratedBootfilesName]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_SwitchesBootfilesSourceWithoutReinstallingDependants(bool initiallyGenerated)
+    {
+        Apply(initiallyGenerated
+            ? [InstallerOf(ModRequiringBootfiles, versionHash: 1)]
+            : [InstallerOf(ModRequiringBootfiles, versionHash: 1), InstallerOf(BootfilesPackageName, versionHash: 1)]);
+        EventHandlerMock.Invocations.Clear();
+
+        Apply(initiallyGenerated
+            ? [InstallerOf(ModRequiringBootfiles, versionHash: 1), InstallerOf(BootfilesPackageName, versionHash: 1)]
+            : [InstallerOf(ModRequiringBootfiles, versionHash: 1)]);
+
+        var oldBootfiles = initiallyGenerated ? GeneratedBootfilesName : BootfilesPackageName;
+        var newBootfiles = initiallyGenerated ? BootfilesPackageName : GeneratedBootfilesName;
+        InstalledPackages.Should().BeEquivalentTo([ModRequiringBootfiles, newBootfiles]);
+        InstallationState![ModRequiringBootfiles].Dependencies.Should().Equal(newBootfiles);
+        EventHandlerMock.Verify(m => m.UninstallingPackage(oldBootfiles), Times.Once);
+        EventHandlerMock.Verify(m => m.InstallingPackage(newBootfiles), Times.Once);
+        EventHandlerMock.Verify(m => m.InstallingPackage(ModRequiringBootfiles), Times.Never);
     }
 }

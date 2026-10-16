@@ -114,7 +114,7 @@ public class FileSystemRepository : IPackageRepository
     /// <returns></returns>
     private static int FsHash(FileInfo fileInfo)
     {
-        return unchecked((int)(fileInfo.LastWriteTimeUtc.Ticks ^ fileInfo.Length));
+        return (fileInfo.LastWriteTimeUtc.Ticks ^ fileInfo.Length).GetHashCode();
     }
 
     private static void ExistingDirectoryOrCreate(string directoryPath)

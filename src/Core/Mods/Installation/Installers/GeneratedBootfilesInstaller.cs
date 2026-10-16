@@ -1,4 +1,6 @@
-﻿using Core.Packages.Installation.Installers;
+﻿using System.IO.Abstractions;
+using Core.Packages.Installation;
+using Core.Packages.Installation.Installers;
 using Core.Utils;
 using PCarsTools;
 using PCarsTools.Encryption;
@@ -25,6 +27,38 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     }
 
     protected override DirectoryInfo Source { get; }
+
+    internal static int? VersionHash(IFileSystem fs, string gameDirectory, PackageInstallationState? previousBootfiles)
+    {
+        // Installation removes this archive. Its return means the game has restored its
+        // archives, so fingerprint the live inputs rather than backups from before the update.
+        var gameArchivesRestored = fs.File.Exists(Path.Combine(gameDirectory, PakfilesDirectory, PhysicsPersistentPakFileName));
+
+        // Combine the same size/mtime hashes used for package versioning.
+        var hash = 0;
+        foreach (var name in new[] { BootFlowPakFileName, BootSplashPakFileName, PhysicsPersistentPakFileName })
+        {
+            var relativePath = Path.Combine(PakfilesDirectory, name);
+            var path = Path.Combine(gameDirectory, relativePath);
+            if (!gameArchivesRestored && previousBootfiles is not null &&
+                previousBootfiles.Files.Contains(relativePath, StringComparer.OrdinalIgnoreCase) &&
+                fs.File.Exists(path + ".orig") &&
+                (!fs.File.Exists(path) || fs.File.GetCreationTimeUtc(path) <= previousBootfiles.Time.UtcDateTime))
+            {
+                path += ".orig";
+            }
+
+            var file = fs.FileInfo.New(path);
+            if (!file.Exists)
+            {
+                return null;
+            }
+
+            hash ^= unchecked((int)(file.LastWriteTimeUtc.Ticks ^ file.Length));
+        }
+
+        return hash;
+    }
 
     protected override void InstallAllFiles(InstallBody body)
     {
