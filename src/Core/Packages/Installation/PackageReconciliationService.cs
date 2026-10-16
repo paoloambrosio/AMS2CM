@@ -125,7 +125,9 @@ public class PackageReconciliationService<TEventHandler>(
         var installedFiles = new Dictionary<RootedPath, string>();
         foreach (var action in reconciliationActions.TakeWhile(_ => !cancellationToken.IsCancellationRequested))
         {
-            var shadowedBy = new HashSet<string>();
+            // Kept packages no longer list their shadowed files, so callbacks cannot
+            // rediscover all existing relationships. Fresh installs start with an empty set.
+            var shadowedBy = new HashSet<string>(action.ShadowedBy);
             var installCallbacks = new ProcessingCallbacks<RootedPath>
             {
                 Accept = gamePath =>

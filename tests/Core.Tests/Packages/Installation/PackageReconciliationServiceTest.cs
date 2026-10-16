@@ -288,6 +288,29 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
     }
 
     [Fact]
+    public void Apply_PreservesShadowingAcrossUnchangedSyncs()
+    {
+        Apply([
+            InstallerOf("A", versionHash: 1, files: ["Shared"]),
+            InstallerOf("B", versionHash: 1, files: ["Shared", "BF"])
+        ]);
+
+        Apply([
+            InstallerOf("A", versionHash: 1, files: ["Shared"]),
+            InstallerOf("B", versionHash: 1, files: ["Shared", "BF"])
+        ]);
+
+        InstallationState!["B"].ShadowedBy.Should().Equal("A");
+        EventHandlerMock.Invocations.Clear();
+        Apply([InstallerOf("B", versionHash: 1, files: ["Shared", "BF"])]);
+
+        InstallationState["B"].Files.Should().BeEquivalentTo(["Shared", "BF"]);
+        InstallationState["B"].ShadowedBy.Should().BeEmpty();
+        EventHandlerMock.Verify(m => m.UninstallingPackage("B"), Times.Once);
+        EventHandlerMock.Verify(m => m.InstallingPackage("B"), Times.Once);
+    }
+
+    [Fact]
     public void Apply_InstallStopsIfBackupFails()
     {
         BackupStrategyMock.Setup(m => m.PerformBackup(DestinationPath("Fail"))).Throws<TestException>();

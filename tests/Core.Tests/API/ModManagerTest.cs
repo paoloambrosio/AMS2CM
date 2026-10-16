@@ -1091,6 +1091,73 @@ public class ModManagerTest : AbstractFilesystemTest
         eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Once);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Install_RemembersBootfilesShadowingUntilTheShadowingModChanges(bool updateMod)
+    {
+        var sharedFile = Path.Combine(DirAtRoot, "OrTheyWontBeInstalled");
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        var shadowingMod = CreateModArchive(102, [sharedFile]);
+        var bootfiles = CreateCustomBootfiles(900);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, shadowingMod, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        persistedState.For(bootfiles.Name).ShadowedBy.Should().Equal(shadowingMod.Name);
+        eventHandlerMock.Invocations.Clear();
+
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        persistedState.For(bootfiles.Name).ShadowedBy.Should().Equal(shadowingMod.Name);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Never);
+        eventHandlerMock.Verify(m => m.UninstallingPackage(bootfiles.Name), Times.Never);
+
+        if (updateMod)
+        {
+            var update = CreateModArchive(103, [Path.Combine(DirAtRoot, "Unrelated")]);
+            var updatedMod = new Package(shadowingMod.Name, update.VersionHash, update.Location!);
+            modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, updatedMod, bootfiles]);
+        }
+        else
+        {
+            modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, bootfiles]);
+        }
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        File.ReadAllText(GamePath(sharedFile).Full).Should().Be("900");
+        persistedState.For(bootfiles.Name).Files.Should().Contain(sharedFile);
+        persistedState.For(bootfiles.Name).ShadowedBy.Should().BeEmpty();
+        eventHandlerMock.Verify(m => m.UninstallingPackage(bootfiles.Name), Times.Once);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Once);
+
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Once);
+    }
+
+    [Fact]
+    public void Install_MergesNewAndExistingBootfilesShadowing()
+    {
+        var sharedFile = Path.Combine(DirAtRoot, "OrTheyWontBeInstalled");
+        var otherFile = Path.Combine(DirAtRoot, "OtherBootfilesAsset");
+        var track = CreateModArchive(101, [Path.Combine(DirAtRoot, "Track.trd")]);
+        var shadowingMod = CreateModArchive(102, [sharedFile]);
+        var bootfiles = CreateCustomBootfiles(900);
+        CreateFile(new RootedPath(bootfiles.Location!, otherFile), "Bootfiles asset");
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, shadowingMod, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        eventHandlerMock.Invocations.Clear();
+
+        var anotherMod = CreateModArchive(103, [otherFile]);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([track, shadowingMod, anotherMod, bootfiles]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        persistedState.For(bootfiles.Name).ShadowedBy.Should().BeEquivalentTo([shadowingMod.Name, anotherMod.Name]);
+        File.ReadAllText(GamePath(sharedFile).Full).Should().Be("102");
+        File.ReadAllText(GamePath(otherFile).Full).Should().Be("103");
+        eventHandlerMock.Verify(m => m.InstallingPackage(bootfiles.Name), Times.Never);
+    }
+
     #region Utility methods
 
     private IPackage CreateModArchive(int versionHash, IEnumerable<string> relativePaths) =>
