@@ -555,7 +555,7 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
         {
             var package = new Mock<IPackage>();
             package.SetupGet(p => p.Name).Returns(installer.PackageName);
-            package.SetupGet(p => p.VersionHash).Returns(installer.PackageVersionHash);
+            package.SetupGet(p => p.VersionHash).Returns(() => installer.PackageVersionHash);
             package.Setup(p => p.CreateInstaller()).Returns(installer);
             return package.Object;
         }).ToArray();

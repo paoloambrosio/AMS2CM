@@ -6,7 +6,7 @@ using Core.Utils;
 
 namespace Core.Mods.Installation.Installers;
 
-public class BootfilesInstaller : BaseModInstaller
+public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
 {
     public new interface IConfig : BaseModInstaller.IConfig
     {
@@ -39,7 +39,7 @@ public class BootfilesInstaller : BaseModInstaller
 
     public BootfilesInstaller(IFileSystem fileSystem, IPackageInstaller? bootfilesPackageInstaller, string tempDir,
         IConfig config, string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
-        base(fileSystem, PackageOrGenerated(bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming),
+        base(fileSystem, PackageOrGenerated(fileSystem, bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming),
             tempDir, config)
     {
         gameInstallationPath = new RootedPath(gameInstallationDir);
@@ -50,13 +50,10 @@ public class BootfilesInstaller : BaseModInstaller
         this.eventHandler = eventHandler;
     }
 
-    private static IPackageInstaller PackageOrGenerated(IPackageInstaller? bootfilesPackageInstaller,
+    private static IPackageInstaller PackageOrGenerated(IFileSystem fs, IPackageInstaller? bootfilesPackageInstaller,
         string gameInstallationDirectory, string tempDir, IBootfilesNaming bootfilesNaming) =>
-        bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(bootfilesNaming.GeneratedBootfilesName,
+        bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(fs, bootfilesNaming.GeneratedBootfilesName,
             gameInstallationDirectory, tempDir);
-
-    // Force bootfiles to be uninstalled every time
-    public override int? PackageVersionHash => null;
 
     // Bootfiles cannot have dependencies.
     public override IReadOnlySet<string> PackageDependencies => ImmutableHashSet<string>.Empty;
@@ -64,35 +61,90 @@ public class BootfilesInstaller : BaseModInstaller
     protected override void Install(Action innerInstall, IBackupStrategy backupStrategy,
         ProcessingCallbacks<RootedPath> callbacks)
     {
+        var packageNameIfNotGenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? null : PackageName;
+        eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
+        innerInstall();
+    }
+
+    public void NotRequired() => eventHandler.PostProcessingNotRequired();
+
+    public void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    {
         var modConfigs = CollectModConfig();
-        if (modConfigs.None())
+        eventHandler.PostProcessingStart();
+        ConfigureFile(VehicleListDir.SubPath(VehicleListFileName),
+            string.Join(Environment.NewLine, modConfigs.CrdFileEntries), false,
+            eventHandler.PostProcessingVehicles, backupStrategy, callbacks);
+        ConfigureFile(TrackListDir.SubPath(TrackListFileName),
+            string.Join(Environment.NewLine, modConfigs.TrdFileEntries), false,
+            eventHandler.PostProcessingTracks, backupStrategy, callbacks);
+        ConfigureFile(DrivelineDir.SubPath(DrivelineFileName),
+            string.Join(Environment.NewLine + Environment.NewLine, DedupeRecordBlocks(modConfigs.DrivelineRecords)), true,
+            eventHandler.PostProcessingDrivelines, backupStrategy, callbacks);
+        eventHandler.PostProcessingEnd();
+    }
+
+    private void ConfigureFile(RootedPath path, string entries, bool driveline, Action report,
+        IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    {
+        if (!callbacks.Accept(path))
         {
-            eventHandler.PostProcessingNotRequired();
+            callbacks.NotAccepted(path);
             return;
         }
-
-        eventHandler.PostProcessingStart();
-        var packageNameIfNotGenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? PackageName : null;
-        eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
-
-        innerInstall();
-
-        if (modConfigs.CrdFileEntries.Count > 0)
+        var exists = FileSystem.File.Exists(path.Full);
+        var original = exists ? FileSystem.File.ReadAllText(path.Full) : "";
+        var contents = RemoveConfigBlocks(original);
+        if (entries.Length > 0)
         {
-            eventHandler.PostProcessingVehicles();
-            AppendCrdFileEntries(modConfigs.CrdFileEntries, backupStrategy, callbacks);
+            var block = WrapConfigBlock(entries);
+            if (driveline && contents.Length > 0)
+            {
+                var end = contents.LastIndexOf("END", StringComparison.Ordinal);
+                if (end < 0) throw new InvalidDataException($"Could not find insertion point in {path.Full}");
+                contents = contents.Insert(end, block);
+            }
+            else
+            {
+                contents += block;
+            }
         }
-        if (modConfigs.TrdFileEntries.Count > 0)
+        if (contents == original) return;
+
+        report();
+        callbacks.Before(path);
+        backupStrategy.PerformBackup(path);
+        FileSystem.Directory.GetParent(path.Full)?.Create();
+        FileSystem.File.WriteAllText(path.Full, contents);
+        backupStrategy.AfterInstall(path);
+        callbacks.After(path);
+    }
+
+    internal static string RemoveConfigBlocks(string contents)
+    {
+        const string beginMarker = "### BEGIN AMS2CM";
+        const string endMarker = "### END AMS2CM";
+        while (true)
         {
-            eventHandler.PostProcessingTracks();
-            AppendTrdFileEntries(modConfigs.TrdFileEntries, backupStrategy, callbacks);
+            var begin = contents.IndexOf(beginMarker, StringComparison.Ordinal);
+            var end = contents.IndexOf(endMarker, StringComparison.Ordinal);
+            if (begin < 0 && end < 0) return contents;
+            var nextBegin = begin < 0 ? -1 : contents.IndexOf(beginMarker, begin + beginMarker.Length, StringComparison.Ordinal);
+            if (begin < 0 || end < begin || (nextBegin >= 0 && nextBegin < end))
+                throw new InvalidDataException("Malformed AMS2CM configuration block");
+
+            // The surrounding newlines are part of WrapConfigBlock, not the original file.
+            var from = begin;
+            if (from > 0 && contents[from - 1] == '\n')
+            {
+                from--;
+                if (from > 0 && contents[from - 1] == '\r') from--;
+            }
+            var to = end + endMarker.Length;
+            if (to < contents.Length && contents[to] == '\r') to++;
+            if (to < contents.Length && contents[to] == '\n') to++;
+            contents = contents.Remove(from, to - from);
         }
-        if (modConfigs.DrivelineRecords.Count > 0)
-        {
-            eventHandler.PostProcessingDrivelines();
-            InsertDrivelineRecords(modConfigs.DrivelineRecords, backupStrategy, callbacks);
-        }
-        eventHandler.PostProcessingEnd();
     }
 
     protected override RootedPath VehicleListDir { get; }

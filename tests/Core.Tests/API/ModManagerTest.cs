@@ -889,7 +889,7 @@ public class ModManagerTest : AbstractFilesystemTest
 
         // Unfortunately, there is no easy way to create pak files!
         modManager.Invoking(m => m.InstallEnabledMods(eventHandlerMock.Object))
-            .Should().Throw<DirectoryNotFoundException>();
+            .Should().Throw<FileNotFoundException>();
 
         //CreateBootfileSources();
         //

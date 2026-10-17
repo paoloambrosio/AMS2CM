@@ -12,7 +12,7 @@ namespace Core.Packages.Installation.Installers;
 internal abstract class BaseInstaller<TPassthrough> : IPackageInstaller
 {
     public string PackageName { get; }
-    public int? PackageVersionHash { get; }
+    public virtual int? PackageVersionHash { get; }
 
     public IReadOnlySet<string> PackageDependencies { get; }
 

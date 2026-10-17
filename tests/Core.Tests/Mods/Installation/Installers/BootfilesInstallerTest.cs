@@ -1,6 +1,8 @@
 using System.IO.Abstractions.TestingHelpers;
 using Core.Mods;
 using Core.Mods.Installation.Installers;
+using Core.Mods.Installation;
+using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Tests.Packages.Installation.Installers;
@@ -56,11 +58,11 @@ public class BootfilesInstallerTest
     #endregion
 
     [Fact]
-    public void BootfilesAreNotInstalledWhenNoMods()
+    public void ConfigurationDoesNotCreateFilesWhenNoMods()
     {
-        InstallBootfiles().InstalledFiles.Should().BeEmpty();
+        NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
-        eventHandlerMock.Verify(m => m.PostProcessingNotRequired(), Times.Once);
+        eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
 
         callbackMock.VerifyNoOtherCalls();
 
@@ -68,7 +70,7 @@ public class BootfilesInstallerTest
     }
 
     [Fact]
-    public void BootfilesAreNotInstalledForModsWithManifests()
+    public void ConfigurationIgnoresModsWithManifests()
     {
         var contents = MultiLineContents();
 
@@ -77,9 +79,9 @@ public class BootfilesInstallerTest
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "ModName", TrackListFileName), contents);
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "ModName", DrivelineFileName), contents);
 
-        InstallBootfiles().InstalledFiles.Should().BeEmpty();
+        NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
-        eventHandlerMock.Verify(m => m.PostProcessingNotRequired(), Times.Once);
+        eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
 
         callbackMock.VerifyNoOtherCalls();
 
@@ -103,11 +105,11 @@ public class BootfilesInstallerTest
         );
 
         var bootfiles = InstallBootfiles();
-        bootfiles.InstalledFiles.Should().BeEquivalentTo(expected);
-        bootfiles.PackageVersionHash.Should().BeNull();
+        bootfiles.InstalledFiles.Should().BeEquivalentTo(DestRootedPaths(FileInBootfilesPackage));
+        bootfiles.PackageVersionHash.Should().Be(42);
 
         eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
-        eventHandlerMock.Verify(m => m.ExtractingBootfiles(null), Times.Once);
+        eventHandlerMock.Verify(m => m.ExtractingBootfiles(BootfilesPackageName), Times.Once);
         eventHandlerMock.Verify(m => m.PostProcessingVehicles(), Times.Once);
         eventHandlerMock.Verify(m => m.PostProcessingEnd(), Times.Once);
         eventHandlerMock.VerifyNoOtherCalls();
@@ -132,10 +134,10 @@ public class BootfilesInstallerTest
             Path.Combine(BootfilesTrackListDir, TrackListFileName)
         );
 
-        InstallBootfiles().InstalledFiles.Should().BeEquivalentTo(expected);
+        InstallBootfiles().InstalledFiles.Should().BeEquivalentTo(DestRootedPaths(FileInBootfilesPackage));
 
         eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
-        eventHandlerMock.Verify(m => m.ExtractingBootfiles(null), Times.Once);
+        eventHandlerMock.Verify(m => m.ExtractingBootfiles(BootfilesPackageName), Times.Once);
         eventHandlerMock.Verify(m => m.PostProcessingTracks(), Times.Once);
         eventHandlerMock.Verify(m => m.PostProcessingEnd(), Times.Once);
         eventHandlerMock.VerifyNoOtherCalls();
@@ -160,10 +162,10 @@ public class BootfilesInstallerTest
             Path.Combine(BootfilesDrivelineDir, DrivelineFileName)
         );
 
-        InstallBootfiles().InstalledFiles.Should().BeEquivalentTo(expected);
+        InstallBootfiles().InstalledFiles.Should().BeEquivalentTo(DestRootedPaths(FileInBootfilesPackage));
 
         eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
-        eventHandlerMock.Verify(m => m.ExtractingBootfiles(null), Times.Once);
+        eventHandlerMock.Verify(m => m.ExtractingBootfiles(BootfilesPackageName), Times.Once);
         eventHandlerMock.Verify(m => m.PostProcessingDrivelines(), Times.Once);
         eventHandlerMock.Verify(m => m.PostProcessingEnd(), Times.Once);
         eventHandlerMock.VerifyNoOtherCalls();
@@ -175,24 +177,140 @@ public class BootfilesInstallerTest
     }
 
 
+    [Fact]
+    public void ConfigurationIsRepeatableAndRemovesObsoleteCategories()
+    {
+        var vehicleSource = Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName);
+        var trackSource = Path.Combine(destDir, GameSupportedModDirectory, "Mod", TrackListFileName);
+        var drivelineSource = Path.Combine(destDir, GameSupportedModDirectory, "Mod", DrivelineFileName);
+        var vehicle = Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName);
+        var track = Path.Combine(destDir, BootfilesTrackListDir, TrackListFileName);
+        var driveline = Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName);
+        fs.AddFile(vehicleSource, "Vehicle1");
+        fs.AddFile(trackSource, "Track1");
+        fs.AddFile(drivelineSource, "RECORD Test");
+        fs.AddFile(vehicle, "Original vehicle\r\n");
+        fs.AddFile(track, "Original track\r\n");
+        fs.AddFile(driveline, "Original driveline\r\nEND");
+        var installer = NewBootfilesInstaller();
+        var callbacks = new ProcessingCallbacks<RootedPath>();
+
+        installer.Configure(backupStrategyMock.Object, callbacks);
+        var first = fs.AllFiles.ToDictionary(p => p, p => fs.File.ReadAllText(p));
+        installer.Configure(backupStrategyMock.Object, callbacks);
+        fs.AllFiles.ToDictionary(p => p, p => fs.File.ReadAllText(p)).Should().BeEquivalentTo(first);
+
+        fs.File.WriteAllText(vehicleSource, "Vehicle2");
+        fs.File.Delete(trackSource);
+        fs.File.Delete(drivelineSource);
+        installer.Configure(backupStrategyMock.Object, callbacks);
+
+        fs.File.ReadAllText(vehicle).Should().StartWith("Original vehicle\r\n").And.Contain("Vehicle2").And.NotContain("Vehicle1");
+        fs.File.ReadAllText(track).Should().Be("Original track\r\n");
+        fs.File.ReadAllText(driveline).Should().Be("Original driveline\r\nEND");
+    }
+
+    [Theory]
+    [InlineData("### BEGIN AMS2CM\nUnclosed")]
+    [InlineData("### END AMS2CM")]
+    [InlineData("### BEGIN AMS2CM\n### BEGIN AMS2CM\n### END AMS2CM")]
+    public void ConfigurationRejectsMalformedBlocksWithoutChangingFile(string contents)
+    {
+        var target = Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName);
+        fs.AddFile(target, contents);
+        var configure = () => NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        configure.Should().Throw<InvalidDataException>();
+        fs.File.ReadAllText(target).Should().Be(contents);
+        backupStrategyMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void ConfigurationDoesNotTouchHigherPriorityFiles()
+    {
+        var target = Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName);
+        fs.AddFile(target, "### BEGIN AMS2CM malformed but owned by another mod");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle");
+
+        NewBootfilesInstaller().Configure(backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath> { Accept = _ => false });
+
+        fs.File.ReadAllText(target).Should().Be("### BEGIN AMS2CM malformed but owned by another mod");
+        backupStrategyMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void ConfigurationActionPreservesBackupsTimeAndOwnershipThroughUninstall()
+    {
+        var target = Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName);
+        fs.AddFile(target, "Original");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle");
+        fs.AddFile(Path.Combine(destDir, FileInBootfilesPackage), "Bootfiles");
+        var originalTime = DateTimeOffset.UtcNow.AddDays(-1);
+        var state = new PackageInstallationState(originalTime, 42, false, [], [FileInBootfilesPackage], []);
+        var backups = new MoveFileBackupStrategy(fs, new BackupNaming(), null);
+        var action = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backups);
+        action.Execute(new ProcessingCallbacks<RootedPath>());
+
+        action.InstallTime.Should().Be(originalTime);
+        action.PackageVersionHash.Should().Be(42);
+        action.InstalledFiles.Should().Contain(Path.Combine(BootfilesVehicleListDir, VehicleListFileName));
+        fs.File.ReadAllText(target + ".orig").Should().Be("Original");
+        state = state with { Files = action.InstalledFiles };
+        // A kept bootfiles package has already claimed its files in reconciliation.
+        var repeated = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backups);
+        repeated.Execute(new ProcessingCallbacks<RootedPath> { Accept = _ => false });
+        repeated.InstallState.Should().Be(IInstallation.State.Installed);
+        fs.File.ReadAllText(target + ".orig").Should().Be("Original");
+
+        foreach (var file in repeated.InstalledFiles) backups.RestoreBackup(new RootedPath(destDir, file));
+        fs.File.ReadAllText(target).Should().Be("Original");
+        fs.File.Exists(target + ".orig").Should().BeFalse();
+        fs.File.Exists(Path.Combine(destDir, FileInBootfilesPackage)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ConfigurationFailureTracksAttemptedNewFiles()
+    {
+        var relative = Path.Combine(BootfilesVehicleListDir, VehicleListFileName);
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle");
+        var state = new PackageInstallationState(DateTimeOffset.UtcNow, 42, false, [], [FileInBootfilesPackage], []);
+        backupStrategyMock.Setup(b => b.PerformBackup(It.IsAny<RootedPath>())).Throws<IOException>();
+        var action = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backupStrategyMock.Object);
+
+        action.Invoking(a => a.Execute(new ProcessingCallbacks<RootedPath>())).Should().Throw<IOException>();
+
+        action.InstallState.Should().Be(IInstallation.State.PartiallyInstalled);
+        action.InstalledFiles.Should().BeEquivalentTo([FileInBootfilesPackage, relative]);
+    }
+
+    private class BackupNaming : MoveFileBackupStrategy.IBackupFileNaming
+    {
+        public string ToBackup(string path) => path + ".orig";
+        public bool IsBackup(string path) => path.EndsWith(".orig");
+    }
+
     #region Utility Methods
 
     private BootfilesInstaller InstallBootfiles()
+    {
+        var bootfilesInstaller = NewBootfilesInstaller();
+        var callbacks = new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object };
+        bootfilesInstaller.Install(packagePath => new RootedPath(destDir, packagePath), backupStrategyMock.Object, callbacks);
+        bootfilesInstaller.Configure(backupStrategyMock.Object, callbacks);
+        fs.Directory.Delete(tempDir, recursive: true);
+        return bootfilesInstaller;
+    }
+
+    private BootfilesInstaller NewBootfilesInstaller()
     {
         var emptyPackage = new StaticFilesInstaller(fs, fakeTimeProvider, BootfilesPackageName, 42,
             new Dictionary<string, string>
             {
                 [FileInBootfilesPackage] = ""
             }, Array.Empty<string>());
-        var bootfilesInstaller = new BootfilesInstaller(fs, emptyPackage, tempDir, configMock.Object,
+        return new BootfilesInstaller(fs, emptyPackage, tempDir, configMock.Object,
             destDir, bootfilesNamingMock.Object, eventHandlerMock.Object);
-        bootfilesInstaller.Install(packagePath => new RootedPath(destDir, packagePath),
-            backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>
-            {
-                Before = callbackMock.Object
-            });
-        fs.Directory.Delete(tempDir, recursive: true);
-        return bootfilesInstaller;
     }
 
     private static string MultiLineContents()

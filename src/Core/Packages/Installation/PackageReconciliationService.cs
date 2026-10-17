@@ -129,6 +129,11 @@ public class PackageReconciliationService<TEventHandler>(
 
         internal void BeginPackage(string packageName) => processed.Add(packageName);
 
+        internal string InstallDir => installDir;
+
+        internal IBackupStrategy BackupStrategy(DateTimeOffset time) =>
+            actionFactory.BackupStrategyProvider.BackupStrategy(time, actionFactory.EventHandler);
+
         internal void UpdateState(IReconciliationAction action, IReadOnlyCollection<string> shadowedBy)
         {
             var files = action.InstalledFiles;

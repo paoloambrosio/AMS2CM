@@ -5,5 +5,5 @@ namespace Core.Mods.Installation.Installers;
 public interface IModInstallerFactory<in TEventHandler>
 {
     public IPackageInstaller ModInstaller(IPackageInstaller packageInstaller, IPackageInstaller bootfilesInstaller);
-    public IPackageInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller, TEventHandler eventHandler);
+    public IBootfilesInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller, TEventHandler eventHandler);
 }

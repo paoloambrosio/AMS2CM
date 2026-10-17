@@ -1,4 +1,5 @@
-﻿using Core.Packages.Installation.Installers;
+﻿using System.IO.Abstractions;
+using Core.Packages.Installation.Installers;
 using Core.Utils;
 using PCarsTools;
 using PCarsTools.Encryption;
@@ -13,18 +14,45 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     internal const string PhysicsPersistentPakFileName = "PHYSICSPERSISTENT.bff";
 
     private readonly string pakPath;
+    private readonly Lazy<int> versionHash;
+    private readonly Lazy<DirectoryInfo> extractionDirectory;
     private readonly string BmtFilesWildcard =
         Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
 
     public GeneratedBootfilesInstaller(string packageName, string gameInstallationDirectory, string tempDir) :
+        this(new FileSystem(), packageName, gameInstallationDirectory, tempDir)
+    {
+    }
+
+    internal GeneratedBootfilesInstaller(IFileSystem fs, string packageName, string gameInstallationDirectory, string tempDir) :
         base(packageName, null)
     {
         pakPath = Path.Combine(gameInstallationDirectory, PakfilesDirectory);
         var extractionPath = Path.Combine(tempDir, Guid.NewGuid().ToString());
-        Source = Directory.CreateDirectory(extractionPath);
+        extractionDirectory = new(() => Directory.CreateDirectory(extractionPath));
+        versionHash = new(() => HashSources(fs));
     }
 
-    protected override DirectoryInfo Source { get; }
+    public override int? PackageVersionHash => versionHash.Value;
+
+    protected override DirectoryInfo Source => extractionDirectory.Value;
+
+    private int HashSources(IFileSystem fs)
+    {
+        var useLiveFiles = fs.File.Exists(fs.Path.Combine(pakPath, PhysicsPersistentPakFileName));
+        var files = new[] { BootFlowPakFileName, BootSplashPakFileName, PhysicsPersistentPakFileName }
+            .Select(name => fs.FileInfo.New(fs.Path.Combine(pakPath,
+                useLiveFiles || name == BootSplashPakFileName ? name : name + ".orig")))
+            .ToArray();
+        foreach (var file in files)
+        {
+            if (!file.Exists)
+            {
+                throw new FileNotFoundException("Missing game file required to generate bootfiles", file.FullName);
+            }
+        }
+        return FileSystemHash.Hash32(files);
+    }
 
     protected override void InstallAllFiles(InstallBody body)
     {

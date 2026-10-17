@@ -338,7 +338,7 @@ public class PackageReconciliationSequenceTest
         var packages = installers.Select(installer =>
         {
             var package = new Mock<IPackage>();
-            package.SetupGet(p => p.CreateInstaller()).Returns(installer);
+            package.Setup(p => p.CreateInstaller()).Returns(installer);
             return package.Object;
         }).ToArray();
         service.Reconcile(state, packages, installDir, updated => state = updated, events.Object, cancellation);
