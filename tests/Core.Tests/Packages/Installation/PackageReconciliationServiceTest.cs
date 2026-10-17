@@ -481,7 +481,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
     }
 
     [Fact]
-    public void Apply_UninstallsAllPackagesBeforeInstallingOrKeepingPackages()
+    public void Apply_CompletesEachPackageBeforeProcessingTheNext()
     {
         InstallationState = new Dictionary<string, PackageInstallationState>
         {
@@ -501,11 +501,11 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
         var sequence = new MockSequence();
         eventHandlerMock.InSequence(sequence).Setup(m => m.ReconciliationStart());
         eventHandlerMock.InSequence(sequence).Setup(m => m.UninstallingPackage("Removed"));
-        eventHandlerMock.InSequence(sequence).Setup(m => m.UninstallingPackage("A"));
-        eventHandlerMock.InSequence(sequence).Setup(m => m.UninstallingPackage("B"));
         eventHandlerMock.InSequence(sequence).Setup(m => m.InstallingPackage("New"));
+        eventHandlerMock.InSequence(sequence).Setup(m => m.UninstallingPackage("A"));
         eventHandlerMock.InSequence(sequence).Setup(m => m.InstallingPackage("A"));
         eventHandlerMock.InSequence(sequence).Setup(m => m.SkippingPackage("Kept"));
+        eventHandlerMock.InSequence(sequence).Setup(m => m.UninstallingPackage("B"));
         eventHandlerMock.InSequence(sequence).Setup(m => m.InstallingPackage("B"));
         eventHandlerMock.InSequence(sequence).Setup(m => m.ReconciliationEnd());
 

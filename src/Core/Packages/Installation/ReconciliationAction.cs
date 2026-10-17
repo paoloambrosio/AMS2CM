@@ -13,6 +13,7 @@ public interface IReconciliationAction
     DateTimeOffset InstallTime { get; }
     IInstallation.State InstallState { get; }
     IReadOnlySet<string> InstalledFiles { get; }
+    IReadOnlySet<string> ShadowedBy { get; }
 
     void Execute(ProcessingCallbacks<RootedPath> callbacks);
 }
@@ -60,6 +61,7 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
         public string PackageName => installer.PackageName;
         public int? PackageVersionHash => installer.PackageVersionHash;
         public IReadOnlySet<string> PackageDependencies => installer.PackageDependencies;
+        public IReadOnlySet<string> ShadowedBy => ImmutableHashSet<string>.Empty;
 
         public IInstallation.State InstallState => installer.Installed;
         public IReadOnlySet<string> InstalledFiles => installer.InstalledFiles
@@ -86,7 +88,12 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
                 .Select(relativePath => new RootedPath(InstallDir, relativePath)).ToImmutableList();
             foreach (var gamePath in filesToUninstall)
             {
-                BackupStrategy.RestoreBackup(gamePath);
+                // An earlier package may already own this path, including a removal marker.
+                // Do not invoke Before: uninstalling must never claim a file.
+                if (callbacks.Accept(gamePath))
+                {
+                    BackupStrategy.RestoreBackup(gamePath);
+                }
                 CurrentInstalledFiles.Remove(gamePath.Relative);
             }
             CurrentInstallState = IInstallation.State.NotInstalled;
@@ -165,6 +172,7 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
         public string PackageName { get; }
         public int? PackageVersionHash => originalState.VersionHash;
         public IReadOnlySet<string> PackageDependencies => originalState.Dependencies.ToImmutableHashSet();
+        public IReadOnlySet<string> ShadowedBy => originalState.ShadowedBy.ToImmutableHashSet();
 
         public IInstallation.State InstallState => CurrentInstallState;
         public IReadOnlySet<string> InstalledFiles => CurrentInstalledFiles.ToImmutableHashSet();

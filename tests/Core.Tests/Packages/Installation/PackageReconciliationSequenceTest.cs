@@ -1,0 +1,384 @@
+﻿using System.IO.Abstractions.TestingHelpers;
+using Core.Packages;
+using Core.Packages.Installation;
+using Core.Packages.Installation.Backup;
+using Core.Packages.Installation.Installers;
+using Core.Tests.Packages.Installation.Installers;
+using Core.Utils;
+using FluentAssertions;
+using Microsoft.Extensions.Time.Testing;
+
+namespace Core.Tests.Packages.Installation;
+
+[IntegrationTest]
+public class PackageReconciliationSequenceTest
+{
+    private readonly MockFileSystem fs = new();
+    private readonly FakeTimeProvider time = new(DateTimeOffset.UtcNow.AddDays(1));
+    private readonly string installDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    private readonly Mock<PackageReconciliationService.IEventHandler> events = new();
+    private readonly Mock<IBackupStrategy> backups = new();
+    private readonly MoveFileBackupStrategy realBackups;
+    private readonly ObservingService service;
+    private IReadOnlyDictionary<string, PackageInstallationState> state =
+        new Dictionary<string, PackageInstallationState>();
+
+    public PackageReconciliationSequenceTest()
+    {
+        realBackups = new(fs, new BackupNaming(), null);
+        backups.Setup(b => b.PerformBackup(It.IsAny<RootedPath>())).Callback<RootedPath>(realBackups.PerformBackup);
+        backups.Setup(b => b.RestoreBackup(It.IsAny<RootedPath>())).Callback<RootedPath>(realBackups.RestoreBackup);
+        backups.Setup(b => b.DeleteBackup(It.IsAny<RootedPath>())).Callback<RootedPath>(realBackups.DeleteBackup);
+        backups.Setup(b => b.AfterInstall(It.IsAny<RootedPath>())).Callback<RootedPath>(realBackups.AfterInstall);
+        var provider = new Mock<IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler>>();
+        provider.Setup(p => p.BackupStrategy(It.IsAny<DateTimeOffset>(),
+                It.IsAny<PackageReconciliationService.IEventHandler>()))
+            .Returns((DateTimeOffset installedAt, PackageReconciliationService.IEventHandler handler) =>
+                new SkipUpdatedBackupStrategy(fs, backups.Object, installedAt, handler));
+        service = new(provider.Object);
+    }
+
+    [Theory]
+    [InlineData(false, 1, false)]
+    [InlineData(true, 1, false)]
+    [InlineData(false, 2, false)]
+    [InlineData(true, 2, false)]
+    [InlineData(false, 2, true)]
+    [InlineData(true, 2, true)]
+    public void Apply_TransfersOwnershipWithoutLosingTheFileOrOriginalBackup(
+        bool originalExists, int nextVersion, bool dropsSharedFile)
+    {
+        if (originalExists)
+        {
+            fs.AddFile(PathOf("Shared"), "Original");
+        }
+        Apply([Installer("B", 1, ("Shared", "B1"), ("BF", "B1"))]);
+        backups.Invocations.Clear();
+
+        var b = dropsSharedFile
+            ? Installer("B", nextVersion, ("BF", "B2"))
+            : Installer("B", nextVersion, ("Shared", "B2"), ("BF", "B2"));
+        Apply([Installer("A", 1, ("shared", "A")), b]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        fs.File.ReadAllText(PathOf("BF")).Should().Be(nextVersion == 1 ? "B1" : "B2");
+        state["A"].Files.Should().Equal("shared");
+        state["B"].Files.Should().Equal("BF");
+        if (!dropsSharedFile)
+        {
+            state["B"].ShadowedBy.Should().Equal("A");
+        }
+        AssertOriginalBackup(originalExists);
+        backups.Verify(bk => bk.RestoreBackup(new RootedPath(installDir, "Shared")), Times.Never);
+
+        Apply([]);
+
+        state.Should().BeEmpty();
+        AssertRestoredFilesystem(originalExists);
+    }
+
+    [Fact]
+    public void Apply_LaterUninstallDoesNotResurrectARemovedFile()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+
+        Apply([
+            Installer("A", 1, ("Shared-remove", "")),
+            Installer("B", 2, ("Shared", "B2"), ("BF", "B2"))
+        ]);
+
+        fs.File.Exists(PathOf("Shared")).Should().BeFalse();
+        state["A"].Files.Should().Equal("Shared");
+        state["B"].Files.Should().Equal("BF");
+        AssertOriginalBackup(true);
+
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Fact]
+    public void Apply_PreservesShadowingAcrossKeptRunsAndExposesFilesAfterAnUpdate()
+    {
+        Apply([
+            Installer("A", 1, ("Shared", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+        Apply([
+            Installer("A", 1, ("Shared", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+        state["B"].ShadowedBy.Should().Equal("A");
+
+        Apply([
+            Installer("A", 2, ("AF", "A2")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("B");
+        state["B"].Files.Should().BeEquivalentTo(["Shared", "BF"]);
+        state["B"].ShadowedBy.Should().BeEmpty();
+        Apply([]);
+        fs.AllFiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Apply_PriorityInversionAndDisabledOwnerRestoreTheRightContents()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([
+            Installer("A", 1, ("Shared", "A"), ("AF", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+        Apply([
+            Installer("B", 1, ("Shared", "B"), ("BF", "B")),
+            Installer("A", 1, ("Shared", "A"), ("AF", "A"))
+        ]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("B");
+        state["A"].ShadowedBy.Should().Equal("B");
+
+        Apply([Installer("A", 1, ("Shared", "A"), ("AF", "A"))]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        state["A"].ShadowedBy.Should().BeEmpty();
+        AssertOriginalBackup(true);
+
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_CancellationPersistsTransferredOwnershipAndCanResume(bool fullyShadowed)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([fullyShadowed
+            ? Installer("B", 1, ("Shared", "B"))
+            : Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+        using var cancellation = new CancellationTokenSource();
+        events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>())).Callback(cancellation.Cancel);
+
+        Apply([
+            Installer("A", 1, ("Shared", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ], cancellation.Token);
+
+        state["A"].Files.Should().Equal("Shared");
+        if (fullyShadowed)
+        {
+            state.Should().NotContainKey("B");
+        }
+        else
+        {
+            state["B"].Files.Should().Equal("BF");
+            state["B"].ShadowedBy.Should().Equal("A");
+            state["B"].Partial.Should().BeFalse();
+        }
+        AssertOriginalBackup(true);
+
+        // Removing A on the next run must expose B's file, even though B never ran.
+        Apply([Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("B");
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Fact]
+    public void Apply_CanCancelBetweenUninstallAndReinstall()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+        using var cancellation = new CancellationTokenSource();
+        events.Setup(e => e.UninstallingPackage("B")).Callback(cancellation.Cancel);
+        var progress = new List<double>();
+        events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>()))
+            .Callback<IPercent>(p => progress.Add(p.Percent));
+
+        Apply([
+            Installer("A", 1, ("Shared", "A")),
+            Installer("B", 2, ("Shared", "B2"), ("BF", "B2"))
+        ], cancellation.Token);
+
+        progress.Should().Equal(0.5);
+        state.Keys.Should().Equal("A");
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        fs.File.Exists(PathOf("BF")).Should().BeFalse();
+        AssertOriginalBackup(true);
+
+        Apply([
+            Installer("A", 1, ("Shared", "A")),
+            Installer("B", 2, ("Shared", "B2"), ("BF", "B2"))
+        ]);
+        fs.File.ReadAllText(PathOf("BF")).Should().Be("B2");
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Fact]
+    public void Apply_RestoreFailurePreservesTheNewOwnerAndRemainingOldFiles()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+        var fail = true;
+        backups.Setup(b => b.RestoreBackup(new RootedPath(installDir, "BF")))
+            .Callback<RootedPath>(path =>
+            {
+                if (fail) throw new IOException("Restore failed");
+                realBackups.RestoreBackup(path);
+            });
+
+        var reconcile = () => Apply([
+            Installer("A", 1, ("Shared", "A")),
+            Installer("B", 2, ("Shared", "B2"), ("BF", "B2"))
+        ]);
+        reconcile.Should().Throw<IOException>();
+
+        state["A"].Files.Should().Equal("Shared");
+        state["B"].Files.Should().Equal("BF");
+        state["B"].Partial.Should().BeTrue();
+        state["B"].ShadowedBy.Should().Equal("A");
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        AssertOriginalBackup(true);
+
+        fail = false;
+        reconcile();
+        state["B"].Partial.Should().BeFalse();
+        fs.File.ReadAllText(PathOf("BF")).Should().Be("B2");
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Fact]
+    public void Apply_InstallFailurePersistsOwnershipTransfersBeforeTheNextPackageRuns()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+        var fail = true;
+        backups.Setup(b => b.PerformBackup(new RootedPath(installDir, "Fail")))
+            .Callback<RootedPath>(path =>
+            {
+                if (fail) throw new IOException("Backup failed");
+                realBackups.PerformBackup(path);
+            });
+        var reconcile = () => Apply([
+            Installer("A", 1, ("Shared", "A"), ("Fail", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+
+        reconcile.Should().Throw<IOException>();
+        state["A"].Partial.Should().BeTrue();
+        state["A"].Files.Should().BeEquivalentTo(["Shared", "Fail"]);
+        state["B"].Files.Should().Equal("BF");
+        state["B"].ShadowedBy.Should().Equal("A");
+        AssertOriginalBackup(true);
+
+        fail = false;
+        reconcile();
+        state["A"].Partial.Should().BeFalse();
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Fact]
+    public void Apply_ReportsProgressPerPackageIncludingReinstallPairs()
+    {
+        Apply([Installer("A", 1, ("AF", "A")), Installer("B", 1, ("BF", "B"))]);
+        var progress = new List<double>();
+        events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>()))
+            .Callback<IPercent>(p => progress.Add(p.Percent));
+
+        Apply([Installer("A", 2, ("AF", "A2")), Installer("B", 1, ("BF", "B"))]);
+
+        progress.Should().Equal(0.5, 1.0);
+    }
+
+    [Fact]
+    public void Apply_DecisionHookSeesDependenciesFromKeptAndNewlyInstalledPackages()
+    {
+        var kept = new StaticFilesInstaller(fs, time, "Kept", 1,
+            new Dictionary<string, string> { ["KF"] = "K" }, ["ExistingDependency"]);
+        Apply([kept]);
+
+        var inner = Installer("New", 1, ("NF", "N"));
+        var discovered = new Mock<IPackageInstaller>();
+        discovered.SetupGet(i => i.PackageName).Returns(inner.PackageName);
+        discovered.SetupGet(i => i.PackageVersionHash).Returns(inner.PackageVersionHash);
+        discovered.SetupGet(i => i.InstallTime).Returns(inner.InstallTime);
+        discovered.SetupGet(i => i.Installed).Returns(() => inner.Installed);
+        discovered.SetupGet(i => i.InstalledFiles).Returns(() => inner.InstalledFiles);
+        discovered.SetupGet(i => i.PackageDependencies).Returns(() =>
+            inner.Installed == IInstallation.State.Installed
+                ? new HashSet<string> { "NewDependency" }
+                : new HashSet<string>());
+        discovered.Setup(i => i.Install(It.IsAny<IInstaller.Destination>(), It.IsAny<IBackupStrategy>(),
+                It.IsAny<ProcessingCallbacks<RootedPath>>()))
+            .Callback<IInstaller.Destination, IBackupStrategy, ProcessingCallbacks<RootedPath>>(inner.Install);
+
+        var observed = false;
+        service.BeforeDecision = (name, current) =>
+        {
+            if (name != "Last") return;
+            observed = true;
+            current["Kept"].Dependencies.Should().Equal("ExistingDependency");
+            current["New"].Dependencies.Should().Equal("NewDependency");
+        };
+
+        Apply([Installer("Kept", 1, ("KF", "Unused")), discovered.Object, Installer("Last", 1, ("LF", "L"))]);
+
+        observed.Should().BeTrue();
+    }
+
+    private IPackageInstaller Installer(string name, int version, params (string Path, string Contents)[] files) =>
+        new StaticFilesInstaller(fs, time, name, version,
+            files.ToDictionary(f => f.Path, f => f.Contents), []);
+
+    private void Apply(IPackageInstaller[] installers, CancellationToken cancellation = default)
+    {
+        var packages = installers.Select(installer =>
+        {
+            var package = new Mock<IPackage>();
+            package.SetupGet(p => p.CreateInstaller()).Returns(installer);
+            return package.Object;
+        }).ToArray();
+        service.Reconcile(state, packages, installDir, updated => state = updated, events.Object, cancellation);
+        time.Advance(TimeSpan.FromMinutes(1));
+    }
+
+    private string PathOf(string relative) => Path.Combine(installDir, relative);
+
+    private void AssertOriginalBackup(bool exists)
+    {
+        fs.File.Exists(PathOf("Shared.orig")).Should().Be(exists);
+        if (exists)
+        {
+            fs.File.ReadAllText(PathOf("Shared.orig")).Should().Be("Original");
+        }
+    }
+
+    private void AssertRestoredFilesystem(bool originalExists)
+    {
+        fs.AllFiles.Select(path => (path.ToUpperInvariant(), fs.File.ReadAllText(path))).Should().BeEquivalentTo(
+            originalExists ? new[] { (PathOf("Shared").ToUpperInvariant(), "Original") } : []);
+    }
+
+    private class BackupNaming : MoveFileBackupStrategy.IBackupFileNaming
+    {
+        public string ToBackup(string fullPath) => fullPath + ".orig";
+        public bool IsBackup(string fullPath) => fullPath.EndsWith(".orig");
+    }
+
+    private class ObservingService(
+        IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler> provider)
+        : PackageReconciliationService<PackageReconciliationService.IEventHandler>(provider)
+    {
+        internal Action<string, IReadOnlyDictionary<string, PackageInstallationState>>? BeforeDecision { get; set; }
+
+        protected override IReadOnlyCollection<IReconciliationAction> ReconciliationActions(
+            string packageName, IPackageInstaller? installer, ReconciliationContext context)
+        {
+            BeforeDecision?.Invoke(packageName, context.CurrentState);
+            return base.ReconciliationActions(packageName, installer, context);
+        }
+    }
+}

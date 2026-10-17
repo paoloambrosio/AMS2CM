@@ -14,7 +14,7 @@ public class ModReconciliationService<TEventHandler>(
     : PackageReconciliationService<TEventHandler>(backupStrategyProvider)
     where TEventHandler : PackageReconciliationService.IEventHandler
 {
-    protected override IReadOnlyCollection<IReconciliationAction> ReconciliationActions(
+    protected override ReconciliationContext CreateReconciliationContext(
         IReadOnlyDictionary<string, PackageInstallationState> previousState,
         IEnumerable<IPackageInstaller> installers, string installDir, TEventHandler eventHandler)
     {
@@ -34,7 +34,7 @@ public class ModReconciliationService<TEventHandler>(
                     .ToArray()
             });
 
-        return base.ReconciliationActions(stateWithBootfilesDepsReplaced, modInstallers, installDir, eventHandler);
+        return base.CreateReconciliationContext(stateWithBootfilesDepsReplaced, modInstallers, installDir, eventHandler);
     }
 
     private IPackageInstaller CreateBootfilesInstaller(IEnumerable<IPackageInstaller> bootfilesPackageInstallers, TEventHandler eventHandler)
