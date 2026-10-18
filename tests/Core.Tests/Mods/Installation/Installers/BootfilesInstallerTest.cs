@@ -299,9 +299,11 @@ public class BootfilesInstallerTest
     }
 
     [Fact]
-    public void ConfigurationFailureTracksAttemptedNewFiles()
+    public void ConfigurationBackupFailureLeavesNewFileUnowned()
     {
         var relative = Path.Combine(BootfilesVehicleListDir, VehicleListFileName);
+        var target = Path.Combine(destDir, relative);
+        fs.AddFile(target, "Original");
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle");
         var state = new PackageInstallationState(DateTimeOffset.UtcNow, 42, false, [], [FileInBootfilesPackage], []);
         backupStrategyMock.Setup(b => b.PerformBackup(It.IsAny<RootedPath>())).Throws<IOException>();
@@ -310,7 +312,10 @@ public class BootfilesInstallerTest
         action.Invoking(a => a.Execute(new ProcessingCallbacks<RootedPath>())).Should().Throw<IOException>();
 
         action.InstallState.Should().Be(IInstallation.State.PartiallyInstalled);
-        action.InstalledFiles.Should().BeEquivalentTo([FileInBootfilesPackage, relative]);
+        action.InstalledFiles.Should().BeEquivalentTo([FileInBootfilesPackage]);
+        foreach (var file in action.InstalledFiles)
+            new MoveFileBackupStrategy(fs, new BackupNaming(), null).RestoreBackup(new RootedPath(destDir, file));
+        fs.File.ReadAllText(target).Should().Be("Original");
     }
 
     private class BackupNaming : MoveFileBackupStrategy.IBackupFileNaming

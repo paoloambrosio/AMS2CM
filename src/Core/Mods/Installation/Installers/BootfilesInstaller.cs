@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.IO.Abstractions;
+using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -31,15 +32,18 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
     private readonly IEventHandler eventHandler;
 
     public BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller, string tempDir, IConfig config,
-        string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
+        string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler,
+        PackageInstallationState? previousInstallation = null) :
         this(new FileSystem(), bootfilesPackageInstaller, tempDir, config,
-            gameInstallationDir, bootfilesNaming, eventHandler)
+            gameInstallationDir, bootfilesNaming, eventHandler, previousInstallation)
     {
     }
 
     public BootfilesInstaller(IFileSystem fileSystem, IPackageInstaller? bootfilesPackageInstaller, string tempDir,
-        IConfig config, string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
-        base(fileSystem, PackageOrGenerated(fileSystem, bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming),
+        IConfig config, string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler,
+        PackageInstallationState? previousInstallation = null) :
+        base(fileSystem, PackageOrGenerated(fileSystem, bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming,
+                previousInstallation),
             tempDir, config)
     {
         gameInstallationPath = new RootedPath(gameInstallationDir);
@@ -51,9 +55,10 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
     }
 
     private static IPackageInstaller PackageOrGenerated(IFileSystem fs, IPackageInstaller? bootfilesPackageInstaller,
-        string gameInstallationDirectory, string tempDir, IBootfilesNaming bootfilesNaming) =>
+        string gameInstallationDirectory, string tempDir, IBootfilesNaming bootfilesNaming,
+        PackageInstallationState? previousInstallation) =>
         bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(fs, bootfilesNaming.GeneratedBootfilesName,
-            gameInstallationDirectory, tempDir);
+            gameInstallationDirectory, tempDir, previousInstallation: previousInstallation);
 
     // Bootfiles cannot have dependencies.
     public override IReadOnlySet<string> PackageDependencies => ImmutableHashSet<string>.Empty;
@@ -101,11 +106,17 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
         if (contents == original) return;
 
         report();
-        callbacks.Before(path);
         backupStrategy.PerformBackup(path);
-        FileSystem.Directory.GetParent(path.Full)?.Create();
-        FileSystem.File.WriteAllText(path.Full, contents);
-        backupStrategy.AfterInstall(path);
+        callbacks.Before(path);
+        try
+        {
+            FileSystem.Directory.GetParent(path.Full)?.Create();
+            FileSystem.File.WriteAllText(path.Full, contents);
+        }
+        finally
+        {
+            backupStrategy.AfterInstall(path);
+        }
         callbacks.After(path);
     }
 

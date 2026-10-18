@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -6,7 +7,8 @@ using Core.Utils;
 namespace Core.Packages.Installation;
 
 public class PackageReconciliationService<TEventHandler>(
-    IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider)
+    IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
+    IFileSystem? fileSystem = null)
     : IReconciliationService<TEventHandler>
     where TEventHandler : PackageReconciliationService.IEventHandler
 {
@@ -35,7 +37,7 @@ public class PackageReconciliationService<TEventHandler>(
     protected virtual ReconciliationContext CreateReconciliationContext(
         IReadOnlyDictionary<string, PackageInstallationState> previousState,
         IEnumerable<IPackageInstaller> installers, string installDir, TEventHandler eventHandler) =>
-        new(previousState, installers, installDir, backupStrategyProvider, eventHandler);
+        new(previousState, installers, installDir, backupStrategyProvider, eventHandler, fileSystem ?? new FileSystem());
 
     /// <summary>
     /// Called immediately before processing a package. CurrentState includes results and
@@ -69,7 +71,7 @@ public class PackageReconciliationService<TEventHandler>(
         installer.PackageVersionHash is null ||
         state.VersionHash != installer.PackageVersionHash ||
         state.ShadowedBy.Any(context.ToUninstall.Contains) ||
-        (state.ShadowedBy.Count > 0 && !state.ShadowedBy.Any(context.Processed.Contains));
+        state.ShadowedBy.Any(name => !context.Processed.Contains(name));
 
     protected sealed class ReconciliationContext
     {
@@ -90,7 +92,7 @@ public class PackageReconciliationService<TEventHandler>(
             IReadOnlyDictionary<string, PackageInstallationState> previousState,
             IEnumerable<IPackageInstaller> installers, string installDir,
             IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
-            TEventHandler eventHandler)
+            TEventHandler eventHandler, IFileSystem fileSystem)
         {
             PreviousState = previousState;
             state = new(installDir, previousState);
@@ -110,9 +112,9 @@ public class PackageReconciliationService<TEventHandler>(
             Packages = joined.Select(p => (p.Key, p.Value)).ToArray();
 
             var previouslyInstalledPaths = previousState.Values
-                .SelectMany(state => state.Files).Select(path => new RootedPath(installDir, path));
+                .SelectMany(state => state.Files.Select(path => (new RootedPath(installDir, path), state.Time)));
             var trackingBackupProvider = new SkipInstalledBackupStrategy.Provider<TEventHandler>(
-                backupStrategyProvider, previouslyInstalledPaths);
+                backupStrategyProvider, previouslyInstalledPaths, fileSystem);
             actionFactory = new(installDir, trackingBackupProvider, eventHandler);
         }
 

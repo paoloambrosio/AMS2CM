@@ -301,8 +301,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
         InstallationState.Should().BeEquivalentTo(new Dictionary<string, PackageInstallationState>
         {
             ["A"] = new(Time: TestInstallationTimeUtc, VersionHash: 42, Partial: true, Dependencies: [], Files: [
-                "AF1",
-                "Fail" // We don't know where it failed, so we add it
+                "AF1"
             ], ShadowedBy: [])
         });
     }

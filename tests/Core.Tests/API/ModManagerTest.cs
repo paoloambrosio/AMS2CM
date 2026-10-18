@@ -602,7 +602,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 Path.Combine(DirAtRoot, "C"),
             ]),
         ]);
-        using var _ = CreateFile(GamePath(DirAtRoot, "B2")).OpenRead(); // Prevent overwrite
+        using var _ = CreateFile(GamePath(DirAtRoot, "B2"), "Original B2").OpenRead(); // Prevent overwrite
 
         modManager.Invoking(m => m.InstallEnabledMods(eventHandlerMock.Object))
             .Should().Throw<IOException>();
@@ -619,8 +619,7 @@ public class ModManagerTest : AbstractFilesystemTest
                         Dependencies: [],
                         Files:
                         [
-                            Path.Combine(DirAtRoot, "B1"),
-                            Path.Combine(DirAtRoot, "B2") // We don't know when it failed
+                            Path.Combine(DirAtRoot, "B1")
                         ],
                         ShadowedBy: []),
                     ["Package103"] = new(
@@ -633,6 +632,9 @@ public class ModManagerTest : AbstractFilesystemTest
                         ShadowedBy: []),
                 }
             ));
+
+        modManager.UninstallAllMods(eventHandlerMock.Object);
+        File.ReadAllText(GamePath(DirAtRoot, "B2").Full).Should().Be("Original B2");
     }
 
     [Fact]
@@ -699,7 +701,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 Files: [sharedFile],
                 ShadowedBy: [])
         });
-        CreateFile(GamePath(sharedFile), "Original");
+        CreateFile(GamePath(sharedFile), "102").CreationTimeUtc = PastDate.UtcDateTime;
 
         // A is going to shadow the previously-unshadowed B
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([modB, modA]);
@@ -709,6 +711,33 @@ public class ModManagerTest : AbstractFilesystemTest
         File.ReadAllText(GamePath(sharedFile).Full).Should().Be("101");
         File.Exists(GamePath(BackupName(sharedFile)).Full).Should().BeFalse(
             "the shared file was introduced by B, so there is no original game file to back up");
+    }
+
+    [Fact]
+    public void Install_ShadowingPreservesUpdatedGameOriginalThroughUninstall()
+    {
+        var sharedFile = Path.Combine(DirAtRoot, "Shared");
+        var modA = CreateModPackage(101, [sharedFile]);
+        var modB = CreateModPackage(102, [sharedFile]);
+        persistedState.InitModInstallationState(new Dictionary<string, PackageInstallationState>
+        {
+            [modB.Name] = new(
+                Time: PastDate, VersionHash: modB.VersionHash, Partial: false,
+                Dependencies: [], Files: [sharedFile], ShadowedBy: [])
+        });
+        CreateFile(GamePath(sharedFile), "Updated game version");
+        CreateFile(GamePath(BackupName(sharedFile)), "Old game version");
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([modB, modA]);
+
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        File.ReadAllText(GamePath(sharedFile).Full).Should().Be("101");
+        File.ReadAllText(GamePath(BackupName(sharedFile)).Full).Should().Be("Updated game version");
+
+        modManager.UninstallAllMods(eventHandlerMock.Object);
+
+        File.ReadAllText(GamePath(sharedFile).Full).Should().Be("Updated game version");
+        File.Exists(GamePath(BackupName(sharedFile)).Full).Should().BeFalse();
     }
 
     [Fact]

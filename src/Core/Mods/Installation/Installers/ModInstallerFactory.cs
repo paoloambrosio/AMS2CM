@@ -1,4 +1,5 @@
 ﻿using Core.Games;
+using Core.Packages.Installation;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
 
@@ -27,7 +28,7 @@ public class ModInstallerFactory<TConfig> : IModInstallerFactory<BootfilesInstal
         new ModInstaller(packageInstaller, tempDir.BasePath, config, game.InstallationDirectory, bootfilesInstaller.PackageName);
 
     public IBootfilesInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
-        BootfilesInstaller.IEventHandler eventHandler) =>
+        BootfilesInstaller.IEventHandler eventHandler, PackageInstallationState? previousInstallation = null) =>
         new BootfilesInstaller(bootfilesPackageInstaller, tempDir.BasePath, config,
-            game.InstallationDirectory, bootfilesNaming, eventHandler);
+            game.InstallationDirectory, bootfilesNaming, eventHandler, previousInstallation);
 }

@@ -1,4 +1,5 @@
 ﻿using System.IO.Abstractions;
+using Core.Packages.Installation;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
 using PCarsTools;
@@ -17,22 +18,26 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     private readonly Lazy<int> versionHash;
     private readonly Lazy<IDirectoryInfo> extractionDirectory;
     private readonly Action<string, string> extractPak;
+    private readonly PackageInstallationState? previousInstallation;
     private readonly string BmtFilesWildcard =
         Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
 
-    public GeneratedBootfilesInstaller(string packageName, string gameInstallationDirectory, string tempDir) :
-        this(new FileSystem(), packageName, gameInstallationDirectory, tempDir)
+    public GeneratedBootfilesInstaller(string packageName, string gameInstallationDirectory, string tempDir,
+        PackageInstallationState? previousInstallation = null) :
+        this(new FileSystem(), packageName, gameInstallationDirectory, tempDir,
+            previousInstallation: previousInstallation)
     {
     }
 
     internal GeneratedBootfilesInstaller(IFileSystem fs, string packageName, string gameInstallationDirectory, string tempDir,
-        Action<string, string>? extractPak = null) : base(fs, packageName, null)
+        Action<string, string>? extractPak = null, PackageInstallationState? previousInstallation = null) : base(fs, packageName, null)
     {
         pakPath = Path.Combine(gameInstallationDirectory, PakfilesDirectory);
         var extractionPath = Path.Combine(tempDir, Guid.NewGuid().ToString());
         extractionDirectory = new(() => fs.Directory.CreateDirectory(extractionPath));
         versionHash = new(() => HashSources(fs));
         this.extractPak = extractPak ?? ExtractPak;
+        this.previousInstallation = previousInstallation;
     }
 
     public override int? PackageVersionHash => versionHash.Value;
@@ -41,10 +46,19 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
 
     private int HashSources(IFileSystem fs)
     {
-        var useLiveFiles = fs.File.Exists(fs.Path.Combine(pakPath, PhysicsPersistentPakFileName));
         var files = new[] { BootFlowPakFileName, BootSplashPakFileName, PhysicsPersistentPakFileName }
-            .Select(name => fs.FileInfo.New(fs.Path.Combine(pakPath,
-                useLiveFiles || name == BootSplashPakFileName ? name : name + ".orig")))
+            .Select(name =>
+            {
+                var live = fs.FileInfo.New(fs.Path.Combine(pakPath, name));
+                if (name == BootSplashPakFileName) return live;
+
+                // Unchanged managed files use their original backups; game updates
+                // replace individual files independently, including BOOTFLOW alone.
+                var managed = previousInstallation is { } previous &&
+                    previous.Files.Contains(Path.Combine(PakfilesDirectory, name), StringComparer.OrdinalIgnoreCase) &&
+                    live.Exists && live.CreationTimeUtc <= previous.Time.UtcDateTime;
+                return !live.Exists || managed ? fs.FileInfo.New(live.FullName + ".orig") : live;
+            })
             .ToArray();
         foreach (var file in files)
         {

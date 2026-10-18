@@ -90,6 +90,23 @@ public class MoveFileBackupStrategyTest
     }
 
     [Fact]
+    public void PerformBackup_EventFailureLeavesOriginalUntouched()
+    {
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            { OriginalFile, OriginalContents },
+            { BackupFile, "Existing backup" }
+        });
+        eventHandlerMock.Setup(e => e.BackupSkipped(OriginalPath)).Throws<IOException>();
+        var strategy = new MoveFileBackupStrategy(fs, BackupFileNaming, eventHandlerMock.Object);
+
+        strategy.Invoking(s => s.PerformBackup(OriginalPath)).Should().Throw<IOException>();
+
+        fs.File.ReadAllText(OriginalFile).Should().Be(OriginalContents);
+        fs.File.ReadAllText(BackupFile).Should().Be("Existing backup");
+    }
+
+    [Fact]
     public void RestoreBackup_MovesBackupToOriginal()
     {
         var fs = new MockFileSystem(new Dictionary<string, MockFileData>

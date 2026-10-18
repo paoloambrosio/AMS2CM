@@ -6,6 +6,7 @@ public interface IBackupStrategy
 {
     /// <summary>
     /// Performs backup of a file.
+    /// If this fails, the destination must remain unchanged.
     /// </summary>
     /// <param name="path">File to back up.</param>
     public void PerformBackup(RootedPath path);
@@ -23,7 +24,7 @@ public interface IBackupStrategy
     public void DeleteBackup(RootedPath path);
 
     /// <summary>
-    /// Optional post-install steps to track files overwritten by game updates.
+    /// Tracks managed files, including partially completed writes, for game update detection.
     /// </summary>
     /// <param name="path"></param>
     public void AfterInstall(RootedPath path);

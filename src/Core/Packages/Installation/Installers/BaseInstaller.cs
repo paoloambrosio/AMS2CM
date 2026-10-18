@@ -51,27 +51,35 @@ internal abstract class BaseInstaller<TPassthrough> : IPackageInstaller
         {
             var (destPath, removeFile) = NeedsRemoving(destination(pathInPackage));
 
-            callbacks.Wrap(() =>
+            if (!callbacks.Accept(destPath))
             {
-                try
+                callbacks.NotAccepted(destPath);
+                return;
+            }
+
+            // A failed backup leaves the original untouched. Track ownership only once
+            // backup succeeds, but before a write or removal can partially change it.
+            backupStrategy.PerformBackup(destPath);
+            installedFiles.Add(destPath);
+            callbacks.Before(destPath);
+            try
+            {
+                if (removeFile)
                 {
-                    backupStrategy.PerformBackup(destPath);
-                    if (removeFile)
-                    {
-                        FileSystem.File.Delete(destPath.Full);
-                    }
-                    else
-                    {
-                        FileSystem.Directory.GetParent(destPath.Full)?.Create();
-                        InstallFile(destPath, context);
-                    }
+                    FileSystem.File.Delete(destPath.Full);
                 }
-                finally
+                else
                 {
-                    installedFiles.Add(destPath);
+                    FileSystem.Directory.GetParent(destPath.Full)?.Create();
+                    InstallFile(destPath, context);
                 }
+            }
+            finally
+            {
+                // Partial writes are managed files too, not subsequent game updates.
                 backupStrategy.AfterInstall(destPath);
-            }, destPath);
+            }
+            callbacks.After(destPath);
         });
 
         Installed = IInstallation.State.Installed;

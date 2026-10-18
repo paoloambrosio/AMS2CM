@@ -1,3 +1,4 @@
+using System.IO.Abstractions.TestingHelpers;
 using Core.Packages.Installation.Backup;
 using Core.Utils;
 using FluentAssertions;
@@ -13,6 +14,7 @@ public class SkipInstalledBackupStrategyTest
     private readonly DateTimeOffset backupTime = DateTimeOffset.UtcNow.Subtract(TimeSpan.FromHours(1));
     private readonly Mock<IBackupStrategy> inner = new();
     private readonly Mock<IBackupStrategyProvider<DateTimeOffset, IBackupEventHandler>> baseProvider = new();
+    private readonly MockFileSystem fs = new();
 
     public SkipInstalledBackupStrategyTest()
     {
@@ -21,7 +23,7 @@ public class SkipInstalledBackupStrategyTest
     }
 
     private SkipInstalledBackupStrategy.Provider<IBackupEventHandler> Provider(params RootedPath[] files) =>
-        new(baseProvider.Object, files);
+        new(baseProvider.Object, files.Select(file => (file, backupTime)), fs);
 
     #endregion
 
@@ -58,6 +60,19 @@ public class SkipInstalledBackupStrategyTest
 
         inner.Verify(m => m.AfterInstall(path), Times.Once);
         inner.Verify(m => m.PerformBackup(path), Times.Never);
+    }
+
+    [Fact]
+    public void AfterInstall_UsesTheNewOwnersTimeAcrossStrategies()
+    {
+        fs.AddFile(path.Full, new MockFileData("Managed") { CreationTime = backupTime.AddMinutes(1) });
+        var provider = Provider(path);
+        provider.BackupStrategy(backupTime.AddMinutes(2), null).AfterInstall(path);
+
+        provider.BackupStrategy(backupTime.AddDays(1), null).PerformBackup(path);
+
+        inner.Verify(m => m.PerformBackup(path), Times.Never);
+        inner.Verify(m => m.DeleteBackup(path), Times.Never);
     }
 
     [Fact]

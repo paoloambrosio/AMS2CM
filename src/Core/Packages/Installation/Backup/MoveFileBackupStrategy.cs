@@ -42,8 +42,8 @@ public class MoveFileBackupStrategy : IBackupStrategy
 
         if (fs.File.Exists(backupFilePath))
         {
-            fs.File.Delete(path.Full);
             eventHandler?.BackupSkipped(path);
+            fs.File.Delete(path.Full);
             return;
         }
 

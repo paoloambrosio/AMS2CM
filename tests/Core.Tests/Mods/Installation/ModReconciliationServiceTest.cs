@@ -23,12 +23,14 @@ public class ModReconciliationServiceTest :
     private static readonly string BootfilesPackageName = "__package";
     private static readonly string ModRequiringBootfiles = "ModRequiringBootfiles";
     private readonly List<string> configured = [];
+    private readonly List<PackageInstallationState?> previousBootfilesStates = [];
     private bool failConfiguration;
 
     protected override IReconciliationService<PackageReconciliationService.IEventHandler> NewService(
         IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler> backupStrategyProvider)
     {
         var bootfilesNamingMock = new Mock<IBootfilesNaming>();
+        bootfilesNamingMock.SetupGet(m => m.GeneratedBootfilesName).Returns(GeneratedBootfilesName);
         bootfilesNamingMock.Setup(m => m.IsBootfiles(BootfilesPackageName)).Returns(true);
         bootfilesNamingMock.Setup(m => m.IsBootfiles(GeneratedBootfilesName)).Returns(true);
         bootfilesNamingMock.Setup(m => m.IsGeneratedBootfiles(GeneratedBootfilesName)).Returns(true);
@@ -41,12 +43,16 @@ public class ModReconciliationServiceTest :
             ? new InstallerWithBootfilesDependency(packageInstaller, bootfilesInstaller)
             : packageInstaller;
 
-    public IBootfilesInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller, PackageReconciliationService.IEventHandler eventHandler) =>
-        new TestBootfilesInstaller(bootfilesPackageInstaller ?? InstallerOf(GeneratedBootfilesName), () =>
+    public IBootfilesInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
+        PackageReconciliationService.IEventHandler eventHandler, PackageInstallationState? previousInstallation = null)
+    {
+        previousBootfilesStates.Add(previousInstallation);
+        return new TestBootfilesInstaller(bootfilesPackageInstaller ?? InstallerOf(GeneratedBootfilesName), () =>
         {
             if (failConfiguration) throw new IOException("Configuration failed");
             configured.Add(bootfilesPackageInstaller?.PackageName ?? GeneratedBootfilesName);
         });
+    }
 
     private class TestBootfilesInstaller(IPackageInstaller inner, Action configure) : IBootfilesInstaller
     {
@@ -137,6 +143,22 @@ public class ModReconciliationServiceTest :
 
         packages.Should().BeEmpty();
         progress.Should().Equal(1.0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_PassesPreviousBootfilesStateToTheInstallerFactory(bool generated)
+    {
+        IPackageInstaller[] Installers() => generated
+            ? [InstallerOf(ModRequiringBootfiles, 1)]
+            : [InstallerOf(ModRequiringBootfiles, 1), InstallerOf(BootfilesPackageName, 42)];
+        Apply(Installers());
+        var previous = InstallationState![generated ? GeneratedBootfilesName : BootfilesPackageName];
+
+        Apply(Installers());
+
+        previousBootfilesStates.Should().Equal(null, previous);
     }
 
     [Theory]

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Core.Mods.Installation.Installers;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
@@ -10,8 +11,9 @@ namespace Core.Mods.Installation;
 public class ModReconciliationService<TEventHandler>(
     IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
     IBootfilesNaming bootfilesNaming,
-    IModInstallerFactory<TEventHandler> modInstallerFactory)
-    : PackageReconciliationService<TEventHandler>(backupStrategyProvider)
+    IModInstallerFactory<TEventHandler> modInstallerFactory,
+    IFileSystem? fileSystem = null)
+    : PackageReconciliationService<TEventHandler>(backupStrategyProvider, fileSystem)
     where TEventHandler : PackageReconciliationService.IEventHandler
 {
     protected override ReconciliationContext CreateReconciliationContext(
@@ -20,7 +22,7 @@ public class ModReconciliationService<TEventHandler>(
     {
         var (bootfiles, notBootfiles) = installers.ToImmutableArray()
             .Partition(p => bootfilesNaming.IsBootfiles(p.PackageName));
-        var bootfilesInstaller = CreateBootfilesInstaller(bootfiles, eventHandler);
+        var bootfilesInstaller = CreateBootfilesInstaller(bootfiles, previousState, eventHandler);
 
         var modInstallers = notBootfiles
             .Select(i => modInstallerFactory.ModInstaller(i, bootfilesInstaller))
@@ -64,9 +66,11 @@ public class ModReconciliationService<TEventHandler>(
         base.NeedsReinstall(packageName, state, installer, context) ||
         (installer is IBootfilesInstaller && context.IsNewlyShadowed(packageName, state));
 
-    private IBootfilesInstaller CreateBootfilesInstaller(IEnumerable<IPackageInstaller> bootfilesPackageInstallers, TEventHandler eventHandler)
+    private IBootfilesInstaller CreateBootfilesInstaller(IEnumerable<IPackageInstaller> bootfilesPackageInstallers,
+        IReadOnlyDictionary<string, PackageInstallationState> previousState, TEventHandler eventHandler)
     {
         var installer = bootfilesPackageInstallers.FirstOrDefault();
-        return modInstallerFactory.BootfilesInstaller(installer, eventHandler);
+        var name = installer?.PackageName ?? bootfilesNaming.GeneratedBootfilesName;
+        return modInstallerFactory.BootfilesInstaller(installer, eventHandler, previousState.GetValueOrDefault(name));
     }
 }
