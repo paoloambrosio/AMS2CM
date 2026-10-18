@@ -20,7 +20,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
 
     protected override IReconciliationService<PackageReconciliationService.IEventHandler> NewService(
         IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler> backupStrategyProvider) =>
-        new PackageReconciliationService<PackageReconciliationService.IEventHandler>(backupStrategyProvider);
+        new PackageReconciliationService<PackageReconciliationService.IEventHandler>(backupStrategyProvider, TestFileSystem);
 
     #endregion
 
@@ -528,7 +528,7 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
 
     protected readonly DateTimeOffset TestInstallationTimeUtc;
     private readonly FakeTimeProvider TestTimeProvider;
-    private readonly MockFileSystem TestFileSystem = new();
+    protected readonly MockFileSystem TestFileSystem = new();
 
     protected IReadOnlyDictionary<string, PackageInstallationState>? InstallationState;
     protected IEnumerable<string> InstalledPackages =>
@@ -550,6 +550,16 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
 
     protected void Apply(IPackageInstaller[] installers, TEventHandler? eventHandler = null)
     {
+        // These planning tests seed saved state directly; create its corresponding files.
+        foreach (var previous in InstallationState?.Values ?? [])
+        {
+            foreach (var relative in previous.Files.Except(previous.RemovedFiles, StringComparer.OrdinalIgnoreCase))
+            {
+                var path = DestinationPath(relative).Full;
+                if (!TestFileSystem.File.Exists(path))
+                    TestFileSystem.AddFile(path, new MockFileData("") { CreationTime = previous.Time });
+            }
+        }
         var packages = installers.Select(installer =>
         {
             var package = new Mock<IPackage>();

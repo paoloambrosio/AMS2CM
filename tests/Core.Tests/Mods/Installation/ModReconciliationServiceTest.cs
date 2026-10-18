@@ -35,7 +35,7 @@ public class ModReconciliationServiceTest :
         bootfilesNamingMock.Setup(m => m.IsBootfiles(GeneratedBootfilesName)).Returns(true);
         bootfilesNamingMock.Setup(m => m.IsGeneratedBootfiles(GeneratedBootfilesName)).Returns(true);
         return new ModReconciliationService<PackageReconciliationService.IEventHandler>(
-            backupStrategyProvider, bootfilesNamingMock.Object, this);
+            backupStrategyProvider, bootfilesNamingMock.Object, this, TestFileSystem);
     }
 
     public IPackageInstaller ModInstaller(IPackageInstaller packageInstaller, IPackageInstaller bootfilesInstaller) =>

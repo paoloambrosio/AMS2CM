@@ -70,6 +70,7 @@ public class PackageReconciliationService<TEventHandler>(
         state.VersionHash is null ||
         installer.PackageVersionHash is null ||
         state.VersionHash != installer.PackageVersionHash ||
+        context.FilesChanged(state) ||
         state.ShadowedBy.Any(context.ToUninstall.Contains) ||
         state.ShadowedBy.Any(name => !context.Processed.Contains(name));
 
@@ -78,6 +79,7 @@ public class PackageReconciliationService<TEventHandler>(
         private readonly ReconciliationState state;
         private readonly ReconciliationAction<TEventHandler>.Factory actionFactory;
         private readonly string installDir;
+        private readonly IFileSystem fileSystem;
         private readonly HashSet<string> processed = [];
         private readonly HashSet<string> toUninstall = [];
 
@@ -97,6 +99,7 @@ public class PackageReconciliationService<TEventHandler>(
             PreviousState = previousState;
             state = new(installDir, previousState);
             this.installDir = installDir;
+            this.fileSystem = fileSystem;
 
             var joined = new OrderedDictionary<string, IPackageInstaller?>();
             var available = installers.ToArray();
@@ -123,6 +126,7 @@ public class PackageReconciliationService<TEventHandler>(
         public IReconciliationAction Uninstall(string packageName, PackageInstallationState state)
         {
             toUninstall.Add(packageName);
+            this.state.InvalidateShadowedBy(packageName);
             return actionFactory.Uninstall(packageName, state);
         }
 
@@ -140,6 +144,21 @@ public class PackageReconciliationService<TEventHandler>(
 
         internal void Claim(RootedPath path, string packageName) => state.Claim(path, packageName);
 
+        internal bool FilesChanged(PackageInstallationState previous)
+        {
+            var removed = previous.RemovedFiles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return previous.Files.Any(relative =>
+            {
+                var path = new RootedPath(installDir, relative);
+                // Higher-priority packages already established the intended contents.
+                if (ClaimedBy(path) is not null) return false;
+                var exists = fileSystem.File.Exists(path.Full);
+                return removed.Contains(relative)
+                    ? exists
+                    : !exists || fileSystem.File.GetCreationTimeUtc(path.Full) > previous.Time.UtcDateTime;
+            });
+        }
+
         internal bool IsNewlyShadowed(string packageName, PackageInstallationState previous) =>
             previous.Files.Any(path => ClaimedBy(new(installDir, path)) is { } owner &&
                 owner != packageName && !previous.ShadowedBy.Contains(owner));
@@ -155,7 +174,11 @@ public class PackageReconciliationService<TEventHandler>(
                     Partial: action.InstallState == IInstallation.State.PartiallyInstalled,
                     Dependencies: action.PackageDependencies,
                     ShadowedBy: shadowedBy,
-                    Files: files));
+                    Files: files)
+                {
+                    RemovedFiles = files.Where(path => !fileSystem.File.Exists(Path.Combine(installDir, path)))
+                        .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase)
+                });
         }
     }
 

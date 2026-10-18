@@ -27,6 +27,15 @@ internal sealed class ReconciliationState
 
     public string? ClaimedBy(RootedPath path) => claimedFiles.GetValueOrDefault(path);
 
+    public void InvalidateShadowedBy(string packageName)
+    {
+        // Persist the pending rebuild before uninstalling can release shadowed paths.
+        foreach (var (name, installed) in packages.Where(p => p.Value.ShadowedBy.Contains(packageName)).ToArray())
+        {
+            packages[name] = installed with { Partial = true };
+        }
+    }
+
     public void Claim(RootedPath path, string packageName)
     {
         claimedFiles.Add(path, packageName);
@@ -54,6 +63,8 @@ internal sealed class ReconciliationState
             SetPackage(name, installed with
             {
                 Files = installed.Files.Except(transferred.Select(p => p.Path)).ToImmutableHashSet(),
+                RemovedFiles = installed.RemovedFiles.Except(transferred.Select(p => p.Path), StringComparer.OrdinalIgnoreCase)
+                    .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase),
                 ShadowedBy = installed.ShadowedBy.Concat(transferred.Select(p => p.Owner!)).ToImmutableHashSet()
             });
         }

@@ -57,6 +57,9 @@ internal class JsonFileStatePersistence : IStatePersistence
                     Dependencies: pis.Dependencies ?? Array.Empty<string>(),
                     Files: pis.Files ?? Array.Empty<string>(),
                     ShadowedBy: pis.ShadowedBy ?? Array.Empty<string>())
+                {
+                    RemovedFiles = pis.RemovedFiles ?? Array.Empty<string>()
+                }
                 ).ToImmutableDictionary()
             );
         }
@@ -117,7 +120,10 @@ internal class JsonFileStatePersistence : IStatePersistence
                     Dependencies: pis.Dependencies,
                     Files: pis.Files,
                     ShadowedBy: pis.ShadowedBy
-                ))
+                )
+                {
+                    RemovedFiles = pis.RemovedFiles
+                })
             ));
 
         // Remove state v1 on write if upgrading from a previous version

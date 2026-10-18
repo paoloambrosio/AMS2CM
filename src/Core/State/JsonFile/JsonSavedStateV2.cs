@@ -19,4 +19,7 @@ record JsonPackageInstallationStateV2(
     IReadOnlyCollection<string> Dependencies,
     IReadOnlyCollection<string> Files,
     IReadOnlyCollection<string> ShadowedBy
-);
+)
+{
+    public IReadOnlyCollection<string>? RemovedFiles { get; init; }
+}

@@ -1,5 +1,9 @@
 ﻿using System.IO.Abstractions.TestingHelpers;
 using System.IO.Abstractions;
+using Core.API;
+using Core.Mods.Installation.Installers;
+using Core.State;
+using Core.State.JsonFile;
 using Core.Packages;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
@@ -526,6 +530,200 @@ public class PackageReconciliationSequenceTest
         Apply([Installer("Kept", 1, ("KF", "Unused")), discovered.Object, Installer("Last", 1, ("LF", "L"))]);
 
         observed.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_ResumesAfterAnUpdatedShadowerDropsAFile(bool fail)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([
+            Installer("A", 1, ("Shared", "A"), ("AF", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+        using var cancellation = new CancellationTokenSource();
+        events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>())).Callback(() =>
+        {
+            if (fail) throw new IOException("Interrupted after updating A");
+            cancellation.Cancel();
+        });
+        var apply = () => Apply([
+            Installer("A", 2, ("AF", "A2")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ], cancellation.Token);
+        if (fail) apply.Should().Throw<IOException>();
+        else apply();
+        state["A"].VersionHash.Should().Be(2);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("Original");
+        ReloadState();
+        events.Reset();
+
+        Apply([
+            Installer("A", 2, ("AF", "A2")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B"))
+        ]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("B");
+        state["B"].ShadowedBy.Should().BeEmpty();
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_RepairsExternallyChangedFilesAndPreservesTheLatestOriginal(bool removed)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+        if (removed) fs.File.Delete(PathOf("Shared"));
+        else
+        {
+            fs.File.WriteAllText(PathOf("Shared"), "Updated game original");
+            fs.File.SetCreationTimeUtc(PathOf("Shared"), time.GetUtcNow().UtcDateTime);
+        }
+
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+
+        fs.File.Exists(PathOf("Shared")).Should().BeTrue();
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        Apply([]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be(removed ? "Original" : "Updated game original");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_KeepsRemovalMarkersAndReappliesThemWhenTheGameRestoresAFile(bool recreated)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("A", 1, ("Shared-remove", ""))]);
+        ReloadState();
+        events.Invocations.Clear();
+        if (recreated)
+        {
+            fs.AddFile(PathOf("Shared"), "Updated game original");
+            fs.File.SetCreationTimeUtc(PathOf("Shared"), time.GetUtcNow().UtcDateTime);
+        }
+
+        Apply([Installer("A", 1, ("Shared-remove", ""))]);
+
+        fs.File.Exists(PathOf("Shared")).Should().BeFalse();
+        events.Verify(e => e.InstallingPackage("A"), recreated ? Times.Once : Times.Never);
+        events.Verify(e => e.SkippingPackage("A"), recreated ? Times.Never : Times.Once);
+        Apply([]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be(recreated ? "Updated game original" : "Original");
+    }
+
+    [Fact]
+    public void Apply_LegacyRemovalMarkersAreReinstalledOnceToLearnRemovalIntent()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("A", 1, ("Shared-remove", ""))]);
+        state = new Dictionary<string, PackageInstallationState>(state)
+        {
+            ["A"] = state["A"] with { RemovedFiles = [] }
+        };
+        events.Invocations.Clear();
+
+        Apply([Installer("A", 1, ("Shared-remove", ""))]);
+        state["A"].RemovedFiles.Should().Equal("Shared");
+        events.Verify(e => e.InstallingPackage("A"), Times.Once);
+        events.Invocations.Clear();
+
+        Apply([Installer("A", 1, ("Shared-remove", ""))]);
+        events.Verify(e => e.SkippingPackage("A"), Times.Once);
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_FailedGeneratedConfigurationWritesRemainOwnedForCleanup(bool originalExists)
+    {
+        var config = new ModInstallConfig();
+        var configPath = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        if (originalExists) fs.AddFile(PathOf(configPath), "Existing configuration");
+        var files = new Mock<IFile>();
+        files.Setup(f => f.Exists(It.IsAny<string>())).Returns((string path) => fs.File.Exists(path));
+        files.Setup(f => f.ReadAllText(It.IsAny<string>())).Returns((string path) => fs.File.ReadAllText(path));
+        void WriteThenFail(string path, string contents)
+        {
+            fs.File.WriteAllText(path, contents);
+            fs.File.SetCreationTimeUtc(path, time.GetUtcNow().AddMinutes(1).UtcDateTime);
+            throw new IOException("Partial configuration write");
+        }
+        files.Setup(f => f.AppendAllText(PathOf(configPath), It.IsAny<string>())).Callback<string, string>(WriteThenFail);
+        files.Setup(f => f.WriteAllText(PathOf(configPath), It.IsAny<string>())).Callback<string, string>(WriteThenFail);
+        var fileSystem = new Mock<IFileSystem>();
+        fileSystem.SetupGet(f => f.File).Returns(files.Object);
+        fileSystem.SetupGet(f => f.Directory).Returns(fs.Directory);
+        var mod = new ModInstaller(fileSystem.Object,
+            Installer("A", 1, (Path.Combine("vehicles", "Car.crd"), "Car")), "Temp", config, installDir, "Bootfiles");
+        var apply = () => Apply([mod]);
+
+        apply.Should().Throw<IOException>();
+        state["A"].Partial.Should().BeTrue();
+        fs.File.Exists(PathOf(configPath)).Should().BeTrue();
+
+        Apply([]);
+
+        fs.File.Exists(PathOf(configPath)).Should().Be(originalExists);
+        if (originalExists) fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration");
+    }
+
+    [Fact]
+    public void Apply_GeneratedConfigurationPreservesPreexistingContentAndRestoresItOnUninstall()
+    {
+        var config = new ModInstallConfig();
+        var configPath = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        fs.AddFile(PathOf(configPath), "Existing configuration");
+        var crd = Path.Combine("vehicles", "Car.crd");
+        var mod = new ModInstaller(fs, Installer("A", 1, (crd, "Car")), "Temp", config, installDir, "Bootfiles");
+
+        Apply([mod]);
+
+        fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration" + crd);
+        Apply([]);
+        fs.File.Exists(PathOf(configPath)).Should().BeTrue();
+        fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration");
+    }
+
+    [Fact]
+    public void Apply_GeneratedConfigurationBackupFailureLeavesTheOriginalUntouchedAndCanRetry()
+    {
+        var config = new ModInstallConfig();
+        var configPath = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        var crd = Path.Combine("vehicles", "Car.crd");
+        fs.AddFile(PathOf(configPath), "Existing configuration");
+        backups.Setup(b => b.PerformBackup(new RootedPath(installDir, configPath))).Throws<IOException>();
+        IPackageInstaller Mod() => new ModInstaller(fs, Installer("A", 1, (crd, "Car")), "Temp",
+            config, installDir, "Bootfiles");
+        var apply = () => Apply([Mod()]);
+
+        apply.Should().Throw<IOException>();
+        state["A"].Files.Should().NotContain(configPath);
+        fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration");
+        Apply([]);
+        fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration");
+
+        backups.Setup(b => b.PerformBackup(new RootedPath(installDir, configPath)))
+            .Callback<RootedPath>(realBackups.PerformBackup);
+        apply();
+        fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration" + crd);
+        Apply([]);
+        fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration");
+    }
+
+    private void ReloadState()
+    {
+        var savedState = PathOf("state.json");
+        var persistence = new JsonFileStatePersistence(fs, savedState, PathOf("installed.json"));
+        persistence.WriteState(new SavedState(state));
+        state = persistence.ReadState().Installation;
+        fs.File.Delete(savedState);
     }
 
     private IPackageInstaller Installer(string name, int version, params (string Path, string Contents)[] files) =>

@@ -218,27 +218,47 @@ public abstract class BaseModInstaller : IPackageInstaller
 
     protected void SafeWriteAllText(RootedPath filePath, string contents,
         IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
-        SafeFileOperation(FileSystem.File.WriteAllText, filePath, contents, backupStrategy, callbacks);
+        SafeFileOperation(filePath, () => contents, backupStrategy, callbacks);
 
     protected void SafeAppendAllText(RootedPath filePath, string contents,
         IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
-        SafeFileOperation(FileSystem.File.AppendAllText, filePath, contents, backupStrategy, callbacks);
+        SafeFileOperation(filePath,
+            () => (FileSystem.File.Exists(filePath.Full) ? FileSystem.File.ReadAllText(filePath.Full) : "") + contents,
+            backupStrategy, callbacks);
 
-    private void SafeFileOperation(Action<string, string> fileOperation, RootedPath filePath,
-        string contents, IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    private void SafeFileOperation(RootedPath filePath,
+        Func<string> getContents, IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
     {
         var fullFilePath = filePath.Full;
 
-        (InstalledFiles.Contains(filePath) ? new ProcessingCallbacks<RootedPath>() : callbacks).Wrap(() =>
+        var owned = InstalledFiles.Contains(filePath);
+        if (!owned && !callbacks.Accept(filePath))
+        {
+            callbacks.NotAccepted(filePath);
+            return;
+        }
+
+        // Read content before a move-based backup removes the destination.
+        var contents = getContents();
+        if (!owned)
+        {
+            backupStrategy.PerformBackup(filePath);
+            localInstalledFiles.Add(filePath);
+            callbacks.Before(filePath);
+        }
+        try
         {
             var dirPath = Path.GetDirectoryName(fullFilePath);
             if (dirPath is not null)
             {
                 FileSystem.Directory.CreateDirectory(dirPath);
             }
-            fileOperation(fullFilePath, contents);
+            FileSystem.File.WriteAllText(fullFilePath, contents);
+        }
+        finally
+        {
             backupStrategy.AfterInstall(filePath);
-            localInstalledFiles.Add(filePath);
-        }, filePath);
+        }
+        if (!owned) callbacks.After(filePath);
     }
 }
