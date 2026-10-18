@@ -65,7 +65,8 @@ public class ModReconciliationServiceTest :
         public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
         public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
             ProcessingCallbacks<RootedPath> callbacks) => inner.Install(destination, backupStrategy, callbacks);
-        public void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) => configure();
+        public void Configure(IReadOnlyList<PackageInstallationState> modsInPriorityOrder,
+            IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) => configure();
         public void NotRequired() { }
     }
 

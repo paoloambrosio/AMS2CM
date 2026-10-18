@@ -644,7 +644,7 @@ public class PackageReconciliationSequenceTest
     public void Apply_FailedGeneratedConfigurationWritesRemainOwnedForCleanup(bool originalExists)
     {
         var config = new ModInstallConfig();
-        var configPath = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        var configPath = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("A", 1), config.VehicleListFileName);
         if (originalExists) fs.AddFile(PathOf(configPath), "Existing configuration");
         var files = new Mock<IFile>();
         files.Setup(f => f.Exists(It.IsAny<string>())).Returns((string path) => fs.File.Exists(path));
@@ -678,7 +678,7 @@ public class PackageReconciliationSequenceTest
     public void Apply_GeneratedConfigurationPreservesPreexistingContentAndRestoresItOnUninstall()
     {
         var config = new ModInstallConfig();
-        var configPath = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        var configPath = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("A", 1), config.VehicleListFileName);
         fs.AddFile(PathOf(configPath), "Existing configuration");
         var crd = Path.Combine("vehicles", "Car.crd");
         var mod = new ModInstaller(fs, Installer("A", 1, (crd, "Car")), "Temp", config, installDir, "Bootfiles");
@@ -695,7 +695,7 @@ public class PackageReconciliationSequenceTest
     public void Apply_GeneratedConfigurationBackupFailureLeavesTheOriginalUntouchedAndCanRetry()
     {
         var config = new ModInstallConfig();
-        var configPath = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        var configPath = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("A", 1), config.VehicleListFileName);
         var crd = Path.Combine("vehicles", "Car.crd");
         fs.AddFile(PathOf(configPath), "Existing configuration");
         backups.Setup(b => b.PerformBackup(new RootedPath(installDir, configPath))).Throws<IOException>();
@@ -871,7 +871,7 @@ public class PackageReconciliationSequenceTest
     {
         var config = new ModInstallConfig { GenerateModDetails = false };
         var crd = Path.Combine("vehicles", "Car.crd");
-        var list = Path.Combine(config.GameSupportedModDir, "B_1", config.VehicleListFileName);
+        var list = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("B", 1), config.VehicleListFileName);
         IPackageInstaller Mod() => new ModInstaller(fs, Installer("B", 1, (crd, "Car")),
             "Temp", config, installDir, "Bootfiles");
         Apply([Mod()]);
@@ -986,7 +986,7 @@ public class PackageReconciliationSequenceTest
         var config = new ModInstallConfig { GenerateModDetails = false };
         var shared = Path.Combine("vehicles", "Shared.crd");
         var other = Path.Combine("vehicles", "Other.crd");
-        var list = Path.Combine(config.GameSupportedModDir, "B_1", config.VehicleListFileName);
+        var list = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("B", 1), config.VehicleListFileName);
         IPackageInstaller Mod() => new ModInstaller(fs, Installer("B", 1, (shared, "B"), (other, "B")),
             "Temp", config, installDir, "Bootfiles");
         fs.Directory.CreateDirectory(PathOf("vehicles"));
@@ -1000,6 +1000,135 @@ public class PackageReconciliationSequenceTest
         state.Should().NotContainKey("B");
         Apply([]);
         fs.AllFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Alpha\\", "Beta\\", null, "_0")]
+    [InlineData("A-B.zip", "AB.zip", 1, "AB_1")]
+    public void Apply_MigratesCollidingConfigurationsAndKeepsThemIndependent(
+        string first, string second, int? version, string legacyName)
+    {
+        var config = new ModInstallConfig();
+        var carA = Path.Combine("vehicles", "A.crd");
+        var carB = Path.Combine("vehicles", "B.crd");
+        var legacyList = Path.Combine(config.GameSupportedModDir, legacyName, config.VehicleListFileName);
+        IPackageInstaller Mod(string name, string car, int? hash) => new ModInstaller(fs,
+            new StaticFilesInstaller(fs, time, name, hash, new Dictionary<string, string> { [car] = "Car" }, []),
+            "Temp", config, installDir, "Bootfiles");
+        // The old generator lets the first package own the shared configuration.
+        Apply([Installer(first, version ?? 0, (carA, "Car"), (legacyList, carA)),
+            Installer(second, version ?? 0, (carB, "Car"), (legacyList, carB))]);
+        ReloadState();
+
+        Apply([Mod(first, carA, version), Mod(second, carB, version)]);
+
+        var listA = state[first].Files.Single(p => p.EndsWith(config.VehicleListFileName));
+        var listB = state[second].Files.Single(p => p.EndsWith(config.VehicleListFileName));
+        listA.Should().NotBe(listB);
+        fs.File.ReadAllText(PathOf(listA)).Should().Be(carA);
+        fs.File.ReadAllText(PathOf(listB)).Should().Be(carB);
+        fs.File.Exists(PathOf(legacyList)).Should().BeFalse();
+        ReloadState();
+        Apply([Mod(second, carB, version), Mod(first, carA, version)]);
+        fs.File.ReadAllText(PathOf(listA)).Should().Be(carA);
+        fs.File.ReadAllText(PathOf(listB)).Should().Be(carB);
+
+        Apply([Mod(first, carA, 2), Mod(second, carB, version)]);
+        var updatedList = state[first].Files.Single(p => p.EndsWith(config.VehicleListFileName));
+        fs.File.Exists(PathOf(listA)).Should().BeFalse();
+        fs.File.ReadAllText(PathOf(updatedList)).Should().Be(carA);
+        Apply([Mod(first, carA, 2)]);
+        fs.File.Exists(PathOf(listB)).Should().BeFalse();
+        fs.File.ReadAllText(PathOf(updatedList)).Should().Be(carA);
+        Apply([]);
+        fs.AllFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Apply_FormatMigrationPreservesOriginalsAndRecoversFromFailure(bool fail, bool gameUpdated)
+    {
+        var config = new ModInstallConfig();
+        var car = Path.Combine("vehicles", "Car.crd");
+        var legacyList = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        var newList = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("A", 1), config.VehicleListFileName);
+        fs.AddFile(PathOf(car), "Original");
+        Apply([Installer("A", 1, (car, "Mod"), (legacyList, car))]);
+        ReloadState();
+        if (gameUpdated) fs.File.WriteAllText(PathOf(car), "Updated game original");
+        IPackageInstaller Mod() => new ModInstaller(fs, Installer("A", 1, (car, "Mod")),
+            "Temp", config, installDir, "Bootfiles");
+        if (fail)
+        {
+            backups.Setup(b => b.PerformBackup(new RootedPath(installDir, newList))).Throws<IOException>();
+            var apply = () => Apply([Mod()]);
+            apply.Should().Throw<IOException>();
+            state["A"].Partial.Should().BeTrue();
+            ReloadState();
+            backups.Setup(b => b.PerformBackup(new RootedPath(installDir, newList)))
+                .Callback<RootedPath>(realBackups.PerformBackup);
+        }
+
+        Apply([Mod()]);
+
+        state["A"].InstallationFormatVersion.Should().Be(1);
+        state["A"].VersionHash.Should().Be(1);
+        state["A"].Partial.Should().BeFalse();
+        fs.File.Exists(PathOf(legacyList)).Should().BeFalse();
+        fs.File.ReadAllText(PathOf(newList)).Should().Be(car);
+        ReloadState();
+        events.Invocations.Clear();
+        Apply([Mod()]);
+        events.Verify(e => e.SkippingPackage("A"), Times.Once);
+        events.Verify(e => e.InstallingPackage("A"), Times.Never);
+        state["A"].InstallationFormatVersion.Should().Be(1);
+        Apply([]);
+        fs.AllFiles.Should().Equal(PathOf(car));
+        fs.File.ReadAllText(PathOf(car)).Should().Be(gameUpdated ? "Updated game original" : "Original");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_FormatMigrationResumesAfterCancellationBetweenUninstallAndInstall(bool gameUpdated)
+    {
+        var config = new ModInstallConfig();
+        var car = Path.Combine("vehicles", "Car.crd");
+        var legacyList = Path.Combine(config.GameSupportedModDir, "A_1", config.VehicleListFileName);
+        var newList = Path.Combine(config.GameSupportedModDir, ModInstaller.ConfigurationName("A", 1), config.VehicleListFileName);
+        fs.AddFile(PathOf(car), "Original");
+        Apply([Installer("A", 1, (car, "Mod"), (legacyList, car))]);
+        if (gameUpdated) fs.File.WriteAllText(PathOf(car), "Updated game original");
+        IPackageInstaller Mod() => new ModInstaller(fs, Installer("A", 1, (car, "Mod")),
+            "Temp", config, installDir, "Bootfiles");
+        using var cancellation = new CancellationTokenSource();
+        events.Setup(e => e.UninstallingPackage("A")).Callback(cancellation.Cancel);
+
+        Apply([Mod()], cancellation.Token);
+
+        state.Should().NotContainKey("A");
+        fs.File.ReadAllText(PathOf(car)).Should().Be(gameUpdated ? "Updated game original" : "Original");
+        fs.File.Exists(PathOf(legacyList)).Should().BeFalse();
+        fs.File.Exists(PathOf(newList)).Should().BeFalse();
+        ReloadState();
+
+        Apply([Mod()]);
+
+        state["A"].InstallationFormatVersion.Should().Be(1);
+        state["A"].Partial.Should().BeFalse();
+        fs.File.ReadAllText(PathOf(newList)).Should().Be(car);
+        fs.File.ReadAllText(PathOf(car + ".orig")).Should().Be(gameUpdated ? "Updated game original" : "Original");
+        ReloadState();
+        events.Invocations.Clear();
+        Apply([Mod()]);
+        events.Verify(e => e.SkippingPackage("A"), Times.Once);
+        events.Verify(e => e.InstallingPackage("A"), Times.Never);
+        Apply([]);
+        fs.AllFiles.Should().Equal(PathOf(car));
+        fs.File.ReadAllText(PathOf(car)).Should().Be(gameUpdated ? "Updated game original" : "Original");
     }
 
     private IPackageInstaller Installer(string name, int version, params (string Path, string Contents)[] files) =>

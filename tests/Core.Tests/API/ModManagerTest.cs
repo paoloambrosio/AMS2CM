@@ -480,7 +480,7 @@ public class ModManagerTest : AbstractFilesystemTest
                     Path.Combine(DirAtRoot, "B"),
                     "C"
                 ],
-                ShadowedBy: []),
+                ShadowedBy: []) { InstallationFormatVersion = 1 },
         });
     }
 
@@ -507,7 +507,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 [
                     Path.Combine(DirAtRoot, "B")
                 ],
-                ShadowedBy: []),
+                ShadowedBy: []) { InstallationFormatVersion = 1 },
         });
     }
 
@@ -551,14 +551,14 @@ public class ModManagerTest : AbstractFilesystemTest
                 [
                     Path.Combine(DirAtRoot, "B")
                 ],
-                ShadowedBy: ["Package102"]),
+                ShadowedBy: ["Package102"]) { InstallationFormatVersion = 1 },
             ["Package102"] = new(Time: DateTimeOffset.UtcNow, VersionHash: 102, Partial: false,
                 Dependencies: [],
                 Files:
                 [
                     Path.Combine(DirAtRoot, "a")
                 ],
-                ShadowedBy: []),
+                ShadowedBy: []) { InstallationFormatVersion = 1 },
         });
     }
 
@@ -582,7 +582,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 [
                     Path.Combine(DirAtRoot, "A")
                 ],
-                ShadowedBy: []),
+                ShadowedBy: []) { InstallationFormatVersion = 1 },
         });
     }
 
@@ -621,7 +621,7 @@ public class ModManagerTest : AbstractFilesystemTest
                         [
                             Path.Combine(DirAtRoot, "B1")
                         ],
-                        ShadowedBy: []),
+                        ShadowedBy: []) { InstallationFormatVersion = 1 },
                     ["Package103"] = new(
                         Time: DateTimeOffset.UtcNow, VersionHash: 103, Partial: false,
                         Dependencies: [],
@@ -629,7 +629,7 @@ public class ModManagerTest : AbstractFilesystemTest
                         [
                             Path.Combine(DirAtRoot, "C")
                         ],
-                        ShadowedBy: []),
+                        ShadowedBy: []) { InstallationFormatVersion = 1 },
                 }
             ));
 
@@ -851,7 +851,7 @@ public class ModManagerTest : AbstractFilesystemTest
         persistedState.Should().HaveInstalled(["Package101"]);
         persistedState.For("Package101").Dependencies.Should().BeEmpty();
 
-        var generatedConfigDir = $"Package101_{101:x}";
+        var generatedConfigDir = Core.Mods.Installation.Installers.ModInstaller.ConfigurationName("Package101", 101);
         File.ReadAllText(GamePath(GameSupportedModDirectory, generatedConfigDir,
             DefaultModInstallConfig.VehicleListFileName).Full).Should().Contain("Vehicle.crd");
         File.ReadAllText(GamePath(GameSupportedModDirectory, generatedConfigDir,
@@ -877,7 +877,7 @@ public class ModManagerTest : AbstractFilesystemTest
         persistedState.Should().HaveInstalled(["Package101", $"{BootfilesPrefix}900"]);
         persistedState.For("Package101").Dependencies.Should().Contain($"{BootfilesPrefix}900");
 
-        var generatedConfigDir = $"Package101_{101:x}";
+        var generatedConfigDir = Core.Mods.Installation.Installers.ModInstaller.ConfigurationName("Package101", 101);
         File.ReadAllText(GamePath(GameSupportedModDirectory, generatedConfigDir,
             DefaultModInstallConfig.TrackListFileName).Full).Should().Contain("Track.trd");
         File.Exists(GamePath(GameSupportedModDirectory, generatedConfigDir, $"{generatedConfigDir}.xml")

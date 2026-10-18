@@ -1,5 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.IO.Abstractions;
+using System.Security.Cryptography;
+using System.Text;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -24,8 +26,8 @@ public class ModInstaller : BaseModInstaller
     private IReadOnlyCollection<string> bootfilesDependency = Array.Empty<string>();
     private readonly string bootfilesPackageName;
 
-    private RootedPath modConfigPath;
-    private string modName;
+    private readonly RootedPath modConfigPath;
+    private readonly string modName;
 
     internal ModInstaller(IPackageInstaller inner, string tempDir, IConfig config,
         string gameInstallationDir, string bootfilesPackageName) :
@@ -41,13 +43,21 @@ public class ModInstaller : BaseModInstaller
         filesToConfigureMatcher = Matchers.ExcludingPatterns(config.ExcludedFromConfig);
         generateModDetails = config.GenerateModDetails;
 
-        var normalisedName = string.Concat(
-            Path.GetFileNameWithoutExtension(inner.PackageName)
-                .Where(char.IsAsciiLetterOrDigit));
-        var hexVersionHash = (inner.PackageVersionHash ?? 0).ToString("x");
-        modName = $"{normalisedName}_{hexVersionHash}";
+        modName = ConfigurationName(inner.PackageName, inner.PackageVersionHash);
 
         modConfigPath = new RootedPath(gameInstallationDir, Path.Combine(GameSupportedModRelativeDir, modName));
+    }
+
+    public override int InstallationFormatVersion => 1;
+
+    internal static string ConfigurationName(string packageName, int? versionHash)
+    {
+        var identity = packageName.Replace('/', '\\').ToUpperInvariant();
+        var stem = string.Concat(Path.GetFileNameWithoutExtension(identity.TrimEnd('\\'))
+            .Where(char.IsAsciiLetterOrDigit).Take(32));
+        if (stem.Length == 0) stem = "MOD";
+        var identityHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
+        return $"{stem}_{identityHash}_{versionHash ?? 0:x}";
     }
 
     public override IReadOnlySet<string> PackageDependencies =>
@@ -113,42 +123,9 @@ public class ModInstaller : BaseModInstaller
             return recordBlocks;
         }
 
-        foreach (var configFile in FileSystem.Directory.EnumerateFiles(StagingFullPath))
-        {
-            var recordIndent = -1;
-            var recordLines = new List<string>();
-            foreach (var line in FileSystem.File.ReadAllLines(configFile))
-            {
-                // Read each line until we find one with RECORD
-                if (recordIndent < 0)
-                {
-                    recordIndent = line.IndexOf("RECORD", StringComparison.Ordinal);
-                }
-                if (recordIndent < 0)
-                {
-                    continue;
-                }
-
-                // Once it finds a blank line, create a record block and start over
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    recordBlocks.Add(string.Join(Environment.NewLine, recordLines));
-                    recordIndent = -1;
-                    recordLines.Clear();
-                    continue;
-                }
-
-                // Otherwise add the line to the current record lines
-                var lineNoIndent = line.Substring(recordIndent).TrimEnd();
-                recordLines.Add(lineNoIndent);
-            }
-
-            // Create a record block also if the file finshed on a record line
-            if (recordIndent >= 0)
-            {
-                recordBlocks.Add(string.Join(Environment.NewLine, recordLines));
-            }
-        }
+        foreach (var configFile in FileSystem.Directory.EnumerateFiles(StagingFullPath)
+                     .Order(StringComparer.OrdinalIgnoreCase).ThenBy(p => p, StringComparer.Ordinal))
+            recordBlocks.AddRange(DrivelineRecords.Parse(FileSystem.File.ReadAllText(configFile)));
 
         return recordBlocks;
     }

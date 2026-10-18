@@ -58,6 +58,7 @@ public class JsonFileStatePersistenceTest
         mod.ShadowedBy.Should().Contain("S");
         mod.RemovedFiles.Should().BeEmpty();
         mod.FileStates.Should().BeEmpty();
+        mod.InstallationFormatVersion.Should().Be(0);
     }
 
     [Fact]
@@ -266,7 +267,7 @@ public class JsonFileStatePersistenceTest
 
         Action write = () => sp.WriteState(SavedState.Empty());
         write.Should().Throw<Exception>()
-            .WithInnerException<UnauthorizedAccessException>();
+            .WithInnerException<IOException>();
     }
 
     [Fact]
@@ -284,6 +285,7 @@ public class JsonFileStatePersistenceTest
                     Files: ["F", "Removed", "Fingerprint", "Unknown"],
                     ShadowedBy: ["S"])
                 {
+                    InstallationFormatVersion = 1,
                     RemovedFiles = ["Removed"],
                     FileStates = new Dictionary<string, InstalledFileState>
                     {
@@ -304,5 +306,110 @@ public class JsonFileStatePersistenceTest
         var readState = sp.ReadState();
 
         readState.Should().BeEquivalentTo(writtenState);
+    }
+
+    [Theory]
+    [InlineData(StateV1File, "")]
+    [InlineData(StateV1File, "null")]
+    [InlineData(StateV1File, "{\"M\":null}")]
+    [InlineData(StateV2File, "")]
+    [InlineData(StateV2File, "null")]
+    [InlineData(StateV2File, "{}")]
+    [InlineData(StateV2File, "{\"Install\":null}")]
+    [InlineData(StateV2File, "{\"Install\":{}}")]
+    [InlineData(StateV2File, "{\"Install\":{\"Mods\":null}}")]
+    [InlineData(StateV2File, "{\"Install\":{\"Mods\":{\"M\":null}}}")]
+    public void ReadState_RejectsInvalidExistingState(string path, string contents)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(path, contents);
+        var persistence = new JsonFileStatePersistence(fs, StateV2File, StateV1File);
+
+        persistence.Invoking(p => p.ReadState()).Should().Throw<InvalidDataException>();
+        fs.File.ReadAllText(path).Should().Be(contents);
+    }
+
+    [Theory]
+    [InlineData(false, "create")]
+    [InlineData(false, "write")]
+    [InlineData(false, "flush")]
+    [InlineData(false, "promote")]
+    [InlineData(true, "create")]
+    [InlineData(true, "write")]
+    [InlineData(true, "flush")]
+    [InlineData(true, "promote")]
+    public void WriteState_FailuresPreserveThePreviousReadableSnapshot(bool existingV2, string failure)
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(StateV1File, "{\"Legacy\":[\"Original\"]}");
+        if (existingV2) fs.AddFile(StateV2File, "{\"Install\":{\"Mods\":{\"Current\":{\"Files\":[\"Original\"]}}}}");
+        var previousFiles = fs.AllFiles.ToDictionary(p => p, p => fs.File.ReadAllText(p));
+        var previous = new JsonFileStatePersistence(fs, StateV2File, StateV1File).ReadState();
+        var file = new Mock<IFile>();
+        file.Setup(f => f.Exists(It.IsAny<string>())).Returns((string p) => fs.File.Exists(p));
+        file.Setup(f => f.Delete(It.IsAny<string>())).Callback<string>(fs.File.Delete);
+        file.Setup(f => f.Replace(It.IsAny<string>(), StateV2File, null)).Throws(new IOException("promote"));
+        file.Setup(f => f.Move(It.IsAny<string>(), StateV2File)).Throws(new IOException("promote"));
+        var streams = new Mock<IFileStreamFactory>();
+        streams.Setup(f => f.New(It.IsAny<string>(), FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            .Returns((string path, FileMode _, FileAccess _, FileShare _) =>
+            {
+                if (failure == "create") throw new IOException("create");
+                if (failure == "promote") return fs.FileStream.New(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                var stream = new Mock<FileSystemStream>(new MemoryStream(), path, false) { CallBase = true };
+                if (failure == "write")
+                    stream.Setup(s => s.Write(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>()))
+                        .Throws(new IOException("write"));
+                else stream.Setup(s => s.Flush(true)).Throws(new IOException("flush"));
+                return stream.Object;
+            });
+        var failingFs = new Mock<IFileSystem>();
+        failingFs.SetupGet(f => f.File).Returns(file.Object);
+        failingFs.SetupGet(f => f.FileStream).Returns(streams.Object);
+        var persistence = new JsonFileStatePersistence(failingFs.Object, StateV2File, StateV1File);
+
+        persistence.Invoking(p => p.WriteState(SavedState.Empty())).Should().Throw<Exception>()
+            .WithInnerException<IOException>().WithMessage(failure);
+
+        fs.AllFiles.ToDictionary(p => p, p => fs.File.ReadAllText(p)).Should().BeEquivalentTo(previousFiles);
+        new JsonFileStatePersistence(fs, StateV2File, StateV1File).ReadState().Should().BeEquivalentTo(previous);
+    }
+
+    [Fact]
+    public void WriteState_ObsoleteStateCleanupFailureDoesNotInvalidateCommit()
+    {
+        var fs = new MockFileSystem();
+        fs.AddFile(StateV1File, "{\"Legacy\":[\"Original\"]}");
+        var file = new Mock<IFile>();
+        file.Setup(f => f.Exists(It.IsAny<string>())).Returns((string p) => fs.File.Exists(p));
+        file.Setup(f => f.Move(It.IsAny<string>(), StateV2File)).Callback<string, string>(fs.File.Move);
+        file.Setup(f => f.Delete(It.IsAny<string>())).Callback<string>(fs.File.Delete);
+        file.Setup(f => f.Delete(StateV1File)).Throws<UnauthorizedAccessException>();
+        var wrapped = new Mock<IFileSystem>();
+        wrapped.SetupGet(f => f.File).Returns(file.Object);
+        wrapped.SetupGet(f => f.FileStream).Returns(fs.FileStream);
+
+        new JsonFileStatePersistence(wrapped.Object, StateV2File, StateV1File).WriteState(SavedState.Empty());
+
+        fs.File.Exists(StateV1File).Should().BeTrue();
+        new JsonFileStatePersistence(fs, StateV2File, StateV1File).ReadState().Installation.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void WriteState_AtomicallyReplacesARealStateFile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var persistence = new JsonFileStatePersistence(directory);
+            File.WriteAllText(Path.Combine(directory, "installed.json"), "{\"Legacy\":[\"Original\"]}");
+            persistence.WriteState(persistence.ReadState());
+            persistence.ReadState().Installation.Should().ContainKey("Legacy");
+            persistence.WriteState(SavedState.Empty());
+            persistence.ReadState().Installation.Should().BeEmpty();
+            Directory.GetFiles(directory).Select(Path.GetFileName).Should().Equal("state.json");
+        }
+        finally { Directory.Delete(directory, true); }
     }
 }

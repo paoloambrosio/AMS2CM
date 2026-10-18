@@ -60,7 +60,7 @@ public class BootfilesInstallerTest
     [Fact]
     public void ConfigurationDoesNotCreateFilesWhenNoMods()
     {
-        NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        NewBootfilesInstaller().Configure(ManagedMods(), backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
 
@@ -79,7 +79,7 @@ public class BootfilesInstallerTest
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "ModName", TrackListFileName), contents);
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "ModName", DrivelineFileName), contents);
 
-        NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        NewBootfilesInstaller().Configure(ManagedMods(), backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         eventHandlerMock.Verify(m => m.PostProcessingStart(), Times.Once);
 
@@ -151,8 +151,8 @@ public class BootfilesInstallerTest
     [Fact]
     public void BootfilesAreInstalledForDrivelineWithoutModManifest()
     {
-        var mod1Config = MultiLineContents();
-        var mod2Config = MultiLineContents();
+        var mod1Config = $"RECORD First{Environment.NewLine}    Ratio 1";
+        var mod2Config = $"RECORD Second{Environment.NewLine}    Ratio 1";
 
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod1", DrivelineFileName), mod1Config);
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod2", DrivelineFileName), mod2Config);
@@ -173,7 +173,7 @@ public class BootfilesInstallerTest
         VerifyCallbackCalledWith(expected);
 
         TrimConfig(fs.File.ReadAllText(Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName)))
-            .Should().Be(mod1Config + Environment.NewLine + mod2Config);
+            .Should().Be(TrimConfig(mod1Config + Environment.NewLine + mod2Config));
     }
 
 
@@ -195,15 +195,15 @@ public class BootfilesInstallerTest
         var installer = NewBootfilesInstaller();
         var callbacks = new ProcessingCallbacks<RootedPath>();
 
-        installer.Configure(backupStrategyMock.Object, callbacks);
+        installer.Configure(ManagedMods(), backupStrategyMock.Object, callbacks);
         var first = fs.AllFiles.ToDictionary(p => p, p => fs.File.ReadAllText(p));
-        installer.Configure(backupStrategyMock.Object, callbacks);
+        installer.Configure(ManagedMods(), backupStrategyMock.Object, callbacks);
         fs.AllFiles.ToDictionary(p => p, p => fs.File.ReadAllText(p)).Should().BeEquivalentTo(first);
 
         fs.File.WriteAllText(vehicleSource, "Vehicle2");
         fs.File.Delete(trackSource);
         fs.File.Delete(drivelineSource);
-        installer.Configure(backupStrategyMock.Object, callbacks);
+        installer.Configure(ManagedMods(), backupStrategyMock.Object, callbacks);
 
         fs.File.ReadAllText(vehicle).Should().StartWith("Original vehicle\r\n").And.Contain("Vehicle2").And.NotContain("Vehicle1");
         fs.File.ReadAllText(track).Should().Be("Original track\r\n");
@@ -232,7 +232,7 @@ public class BootfilesInstallerTest
         var target = Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName);
         fs.AddFile(target, "Original without terminator");
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", DrivelineFileName), "RECORD Test");
-        var configure = () => NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var configure = () => NewBootfilesInstaller().Configure(ManagedMods(), backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         configure.Should().Throw<InvalidDataException>().WithMessage($"*{target}");
         fs.File.ReadAllText(target).Should().Be("Original without terminator");
@@ -247,7 +247,7 @@ public class BootfilesInstallerTest
     {
         var target = Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName);
         fs.AddFile(target, contents);
-        var configure = () => NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var configure = () => NewBootfilesInstaller().Configure(ManagedMods(), backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         configure.Should().Throw<InvalidDataException>();
         fs.File.ReadAllText(target).Should().Be(contents);
@@ -261,7 +261,7 @@ public class BootfilesInstallerTest
         fs.AddFile(target, "### BEGIN AMS2CM malformed but owned by another mod");
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle");
 
-        NewBootfilesInstaller().Configure(backupStrategyMock.Object,
+        NewBootfilesInstaller().Configure(ManagedMods(), backupStrategyMock.Object,
             new ProcessingCallbacks<RootedPath> { Accept = _ => false });
 
         fs.File.ReadAllText(target).Should().Be("### BEGIN AMS2CM malformed but owned by another mod");
@@ -278,7 +278,7 @@ public class BootfilesInstallerTest
         var originalTime = DateTimeOffset.UtcNow.AddDays(-1);
         var state = new PackageInstallationState(originalTime, 42, false, [], [FileInBootfilesPackage], []);
         var backups = new MoveFileBackupStrategy(fs, new BackupNaming(), null);
-        var action = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backups);
+        var action = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backups) { CurrentModsInPriorityOrder = ManagedMods };
         action.Execute(new ProcessingCallbacks<RootedPath>());
 
         action.InstallTime.Should().Be(originalTime);
@@ -287,7 +287,7 @@ public class BootfilesInstallerTest
         fs.File.ReadAllText(target + ".orig").Should().Be("Original");
         state = state with { Files = action.InstalledFiles };
         // A kept bootfiles package has already claimed its files in reconciliation.
-        var repeated = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backups);
+        var repeated = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backups) { CurrentModsInPriorityOrder = ManagedMods };
         repeated.Execute(new ProcessingCallbacks<RootedPath> { Accept = _ => false });
         repeated.InstallState.Should().Be(IInstallation.State.Installed);
         fs.File.ReadAllText(target + ".orig").Should().Be("Original");
@@ -307,7 +307,7 @@ public class BootfilesInstallerTest
         fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle");
         var state = new PackageInstallationState(DateTimeOffset.UtcNow, 42, false, [], [FileInBootfilesPackage], []);
         backupStrategyMock.Setup(b => b.PerformBackup(It.IsAny<RootedPath>())).Throws<IOException>();
-        var action = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backupStrategyMock.Object);
+        var action = new BootfilesConfigurationAction(NewBootfilesInstaller(), destDir, () => state, _ => backupStrategyMock.Object) { CurrentModsInPriorityOrder = ManagedMods };
 
         action.Invoking(a => a.Execute(new ProcessingCallbacks<RootedPath>())).Should().Throw<IOException>();
 
@@ -318,6 +318,66 @@ public class BootfilesInstallerTest
         fs.File.ReadAllText(target).Should().Be("Original");
     }
 
+    [Fact]
+    public void ConfigurationIgnoresUntrackedFoldersAndUnownedFilesWithinManagedFolders()
+    {
+        var owned = Path.Combine(GameSupportedModDirectory, "Managed", VehicleListFileName);
+        fs.AddFile(Path.Combine(destDir, owned), "ManagedVehicle");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Managed", TrackListFileName), "UnownedTrack");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Managed", DrivelineFileName), "RECORD Unowned");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Untracked", VehicleListFileName), "UntrackedVehicle");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Untracked", TrackListFileName), "UntrackedTrack");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Untracked", DrivelineFileName), "RECORD Untracked");
+        PackageInstallationState managed = new(DateTimeOffset.UtcNow, 1, false, [], [owned], []);
+
+        NewBootfilesInstaller().Configure([managed], backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        TrimConfig(fs.File.ReadAllText(Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName)))
+            .Should().Be("ManagedVehicle");
+        fs.File.Exists(Path.Combine(destDir, BootfilesTrackListDir, TrackListFileName)).Should().BeFalse();
+        fs.File.Exists(Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ConfigurationIgnoresRemovalMarkersEvenWhenFilesHaveReappeared()
+    {
+        string[] removed = [
+            Path.Combine(GameSupportedModDirectory, "Managed", VehicleListFileName),
+            Path.Combine(GameSupportedModDirectory, "Managed", TrackListFileName),
+            Path.Combine(GameSupportedModDirectory, "Managed", DrivelineFileName)
+        ];
+        foreach (var path in removed) fs.AddFile(Path.Combine(destDir, path), "RECORD Reappeared");
+        PackageInstallationState managed = new(DateTimeOffset.UtcNow, 1, false, [], removed, [])
+        {
+            RemovedFiles = removed.Select(p => p.ToUpperInvariant()).ToArray()
+        };
+
+        NewBootfilesInstaller().Configure([managed], backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.Exists(Path.Combine(destDir, BootfilesVehicleListDir, VehicleListFileName)).Should().BeFalse();
+        fs.File.Exists(Path.Combine(destDir, BootfilesTrackListDir, TrackListFileName)).Should().BeFalse();
+        fs.File.Exists(Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName)).Should().BeFalse();
+        fs.AllFiles.Should().HaveCount(3);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConfigurationUsesStablePathOrderWithinOnePackage(bool reverseFiles)
+    {
+        var first = Path.Combine(GameSupportedModDirectory, "A", DrivelineFileName);
+        var last = Path.Combine(GameSupportedModDirectory, "Z", DrivelineFileName);
+        fs.AddFile(Path.Combine(destDir, last), "RECORD Same\n    LastOnly 2");
+        fs.AddFile(Path.Combine(destDir, first), "RECORD Same\n    FirstOnly 1");
+        PackageInstallationState managed = new(DateTimeOffset.UtcNow, 1, false, [],
+            reverseFiles ? [last, first] : [first, last], []);
+
+        NewBootfilesInstaller().Configure([managed], backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        TrimConfig(fs.File.ReadAllText(Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName)))
+            .Should().Be($"RECORD Same{Environment.NewLine}LastOnly 2");
+    }
+
     private class BackupNaming : MoveFileBackupStrategy.IBackupFileNaming
     {
         public string ToBackup(string path) => path + ".orig";
@@ -326,12 +386,18 @@ public class BootfilesInstallerTest
 
     #region Utility Methods
 
+    private IReadOnlyList<PackageInstallationState> ManagedMods() =>
+        [new(DateTimeOffset.UtcNow, 1, false, [],
+            fs.AllFiles.Where(p => p.StartsWith(Path.Combine(destDir, GameSupportedModDirectory) + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(p => Path.GetRelativePath(destDir, p)).ToArray(), [])];
+
     private BootfilesInstaller InstallBootfiles()
     {
         var bootfilesInstaller = NewBootfilesInstaller();
         var callbacks = new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object };
         bootfilesInstaller.Install(packagePath => new RootedPath(destDir, packagePath), backupStrategyMock.Object, callbacks);
-        bootfilesInstaller.Configure(backupStrategyMock.Object, callbacks);
+        bootfilesInstaller.Configure(ManagedMods(), backupStrategyMock.Object, callbacks);
         fs.Directory.Delete(tempDir, recursive: true);
         return bootfilesInstaller;
     }

@@ -57,7 +57,13 @@ public class ModReconciliationService<TEventHandler>(
         _ = bootfiles.PackageVersionHash;
         return base.ReconciliationActions(packageName, installer, context)
             .Append(new BootfilesConfigurationAction(bootfiles, context.InstallDir,
-                () => context.CurrentState.GetValueOrDefault(packageName), context.BackupStrategy))
+                () => context.CurrentState.GetValueOrDefault(packageName), context.BackupStrategy)
+            {
+                CurrentModsInPriorityOrder = () => context.Packages
+                    .Where(p => p.Installer is not null && p.Installer is not IBootfilesInstaller)
+                    .Select(p => context.CurrentState.GetValueOrDefault(p.Name))
+                    .OfType<PackageInstallationState>().ToArray()
+            })
             .ToArray();
     }
 

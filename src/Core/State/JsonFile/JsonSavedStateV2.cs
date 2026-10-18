@@ -24,5 +24,6 @@ record JsonPackageInstallationStateV2(
 )
 {
     public IReadOnlyCollection<string>? RemovedFiles { get; init; }
+    public int InstallationFormatVersion { get; init; }
     public IReadOnlyDictionary<string, InstalledFileState>? FileStates { get; init; }
 }

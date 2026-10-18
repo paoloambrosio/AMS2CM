@@ -78,9 +78,10 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
         if (Inner is GeneratedBootfilesInstaller generated) generated.Prepare();
     }
 
-    public void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    public void Configure(IReadOnlyList<PackageInstallationState> modsInPriorityOrder, IBackupStrategy backupStrategy,
+        ProcessingCallbacks<RootedPath> callbacks)
     {
-        var modConfigs = CollectModConfig();
+        var modConfigs = CollectModConfig(modsInPriorityOrder);
         eventHandler.PostProcessingStart();
         ConfigureFile(VehicleListDir.SubPath(VehicleListFileName),
             original => ConfigureListContents(original, string.Join(Environment.NewLine, modConfigs.CrdFileEntries)),
@@ -181,28 +182,34 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
     private static string ConfigBlock(string configBlock) =>
         $"{Environment.NewLine}### BEGIN AMS2CM{Environment.NewLine}{configBlock}{Environment.NewLine}### END AMS2CM{Environment.NewLine}";
 
-    private ConfigEntries CollectModConfig()
+    private ConfigEntries CollectModConfig(IReadOnlyList<PackageInstallationState> modsInPriorityOrder)
     {
         var modsGamePath = gameInstallationPath.SubPath(GameSupportedModRelativeDir);
-        var directoryInfo = FileSystem.DirectoryInfo.New(modsGamePath.Full);
-        if (!directoryInfo.Exists)
-            return ConfigEntries.Empty;
+        var result = ConfigEntries.Empty;
+        // DedupeRecordBlocks keeps the last complete record for each header.
+        foreach (var mod in modsInPriorityOrder.Reverse())
+        {
+            var removed = mod.RemovedFiles.Select(p => gameInstallationPath.SubPath(p)).ToHashSet();
+            foreach (var path in mod.Files.Select(p => gameInstallationPath.SubPath(p))
+                         .Distinct().OrderBy(p => p.Full, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(p => p.Full, StringComparer.Ordinal))
+            {
+                var directory = Path.GetDirectoryName(path.Full);
+                if (directory is null ||
+                    !StringComparer.OrdinalIgnoreCase.Equals(Path.GetDirectoryName(directory), modsGamePath.Full) ||
+                    removed.Contains(path) || !FileSystem.File.Exists(path.Full)) continue;
+                // Native manifests are handled by the game itself.
+                if (FileSystem.File.Exists(Path.Combine(directory, Path.GetFileName(directory) + ".xml"))) continue;
 
-        return directoryInfo.GetDirectories("*").Select(modDir =>
-                modDir.EnumerateFiles($"{modDir.Name}.xml").Any()
-                    ? ConfigEntries.Empty
-                    : new ConfigEntries
-                    (
-                        FileLinesOrEmpty(modDir, VehicleListFileName),
-                        FileLinesOrEmpty(modDir, TrackListFileName),
-                        FileLinesOrEmpty(modDir, DrivelineFileName)
-                    )
-                ).Aggregate(ConfigEntries.Empty, ConfigEntries.Combine);
-    }
-
-    private string[] FileLinesOrEmpty(IDirectoryInfo parent, string fileName)
-    {
-        var filePath = Path.Combine(parent.FullName, fileName);
-        return FileSystem.File.Exists(filePath) ? FileSystem.File.ReadAllLines(filePath) : Array.Empty<string>();
+                var name = Path.GetFileName(path.Full);
+                if (StringComparer.OrdinalIgnoreCase.Equals(name, VehicleListFileName))
+                    result = result.Combine(new(FileSystem.File.ReadAllLines(path.Full), [], []));
+                else if (StringComparer.OrdinalIgnoreCase.Equals(name, TrackListFileName))
+                    result = result.Combine(new([], FileSystem.File.ReadAllLines(path.Full), []));
+                else if (StringComparer.OrdinalIgnoreCase.Equals(name, DrivelineFileName))
+                    result = result.Combine(new([], [], DrivelineRecords.Parse(FileSystem.File.ReadAllText(path.Full))));
+            }
+        }
+        return result;
     }
 }

@@ -44,10 +44,8 @@ internal class JsonFileStatePersistence : IStatePersistence
         if (fs.File.Exists(stateV2FilePath))
         {
             var jsonState = ReadState<JsonSavedStateV2>(stateV2FilePath);
-            if (jsonState is null)
-            {
-                return SavedState.Empty();
-            }
+            if (jsonState?.Install?.Mods is null || jsonState.Install.Mods.Values.Any(p => p is null))
+                throw new InvalidDataException("Invalid installation state in state V2 file");
             var installTime = jsonState.Install.Time ?? fs.File.GetLastWriteTimeUtc(stateV2FilePath);
             return new SavedState(
                 Installation: jsonState.Install.Mods.SelectValues(pis => new PackageInstallationState(
@@ -58,6 +56,7 @@ internal class JsonFileStatePersistence : IStatePersistence
                     Files: pis.Files ?? Array.Empty<string>(),
                     ShadowedBy: pis.ShadowedBy ?? Array.Empty<string>())
                 {
+                    InstallationFormatVersion = pis.InstallationFormatVersion,
                     RemovedFiles = pis.RemovedFiles ?? Array.Empty<string>(),
                     FileStates = pis.FileStates?.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase) ??
                         ImmutableDictionary<string, InstalledFileState>.Empty
@@ -69,10 +68,8 @@ internal class JsonFileStatePersistence : IStatePersistence
         if (fs.File.Exists(stateV1FilePath))
         {
             var jsonState = ReadState<Dictionary<string, IReadOnlyCollection<string>>>(stateV1FilePath);
-            if (jsonState is null)
-            {
-                return SavedState.Empty();
-            }
+            if (jsonState is null || jsonState.Values.Any(files => files is null))
+                throw new InvalidDataException("Invalid installation state in state V1 file");
             var installTime = fs.File.GetLastWriteTimeUtc(stateV1FilePath);
             return new SavedState(
                 Installation: jsonState.AsEnumerable().ToDictionary(
@@ -124,21 +121,45 @@ internal class JsonFileStatePersistence : IStatePersistence
                     ShadowedBy: pis.ShadowedBy
                 )
                 {
+                    InstallationFormatVersion = pis.InstallationFormatVersion,
                     RemovedFiles = pis.RemovedFiles,
                     FileStates = pis.FileStates
                 })
             ));
 
-        // Remove state v1 on write if upgrading from a previous version
-        fs.File.Delete(stateV1FilePath);
-
+        string? temporaryPath = null;
         try
         {
-            fs.File.WriteAllText(stateV2FilePath, JsonConvert.SerializeObject(jsonState, JsonSerializerSettings));
+            var contents = System.Text.Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(jsonState, JsonSerializerSettings));
+            temporaryPath = stateV2FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            using (var stream = fs.FileStream.New(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(contents, 0, contents.Length);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (fs.File.Exists(stateV2FilePath))
+                fs.File.Replace(temporaryPath, stateV2FilePath, null);
+            else
+                fs.File.Move(temporaryPath, stateV2FilePath);
+
+            // V2 takes precedence on reads, so cleanup cannot invalidate a committed save.
+            TryDelete(stateV1FilePath);
         }
         catch (Exception ex)
         {
             throw new Exception($"Failed to write state V2 file", ex);
         }
+        finally
+        {
+            if (temporaryPath is not null) TryDelete(temporaryPath);
+        }
+    }
+
+    private void TryDelete(string path)
+    {
+        try { fs.File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }

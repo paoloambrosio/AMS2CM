@@ -10,6 +10,7 @@ public record PackageInstallationState(
     IReadOnlyCollection<string> ShadowedBy
 )
 {
+    public int InstallationFormatVersion { get; init; }
     // Removal markers own a path while requiring the destination to stay absent.
     public IReadOnlyCollection<string> RemovedFiles { get; init; } = [];
     public IReadOnlyDictionary<string, InstalledFileState> FileStates { get; init; } =

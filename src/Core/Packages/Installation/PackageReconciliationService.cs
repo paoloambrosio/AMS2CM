@@ -70,6 +70,7 @@ public class PackageReconciliationService<TEventHandler>(
     protected virtual bool NeedsReinstall(string packageName, PackageInstallationState state,
         IPackageInstaller installer, ReconciliationContext context) =>
         state.Partial ||
+        state.InstallationFormatVersion != installer.InstallationFormatVersion ||
         context.CurrentState.GetValueOrDefault(packageName)?.Partial == true ||
         context.IsNewlyShadowed(packageName, state) ||
         state.VersionHash is null ||
@@ -204,6 +205,7 @@ public class PackageReconciliationService<TEventHandler>(
                     ShadowedBy: shadowedBy,
                     Files: files)
                 {
+                    InstallationFormatVersion = action.InstallationFormatVersion,
                     // Preserve intent when an action fails before touching its files.
                     RemovedFiles = files.Where(path => expectedFiles.TryGetValue(path, out var expected)
                             ? !expected.Exists : previousRemoved.Contains(path))

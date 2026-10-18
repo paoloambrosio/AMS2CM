@@ -99,9 +99,9 @@ public class ModInstallerTest
 
         string[] expectedFiles = {
             crdFile,
-            Path.Combine(GameSupportedModDirectory, "A_badcafe", VehicleListFile),
-            Path.Combine(GameSupportedModDirectory, "A_badcafe", DrivelineFile),
-            Path.Combine(GameSupportedModDirectory, "A_badcafe", "A_badcafe.xml")
+            Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), VehicleListFile),
+            Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), DrivelineFile),
+            Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), ModInstaller.ConfigurationName("A", 0xbadcafe) + ".xml")
         };
 
         modInstaller.InstalledFiles.Should().BeEquivalentTo(ToDestRootedPath(expectedFiles));
@@ -110,14 +110,14 @@ public class ModInstallerTest
         VerifyCallbackCalledWith(expectedFiles);
 
         fs.AllFiles.Should().BeEquivalentTo(ToDestPath(expectedFiles));
-        fs.GetFile(Path.Combine(destDir, GameSupportedModDirectory, "A_badcafe", VehicleListFile))
+        fs.GetFile(Path.Combine(destDir, GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), VehicleListFile))
             .TextContents.Should().Be(crdFile);
         backupStrategyMock.Verify(m => m.AfterInstall(
-            new RootedPath(destDir, Path.Combine(GameSupportedModDirectory, "A_badcafe", VehicleListFile))));
-        fs.GetFile(Path.Combine(destDir, GameSupportedModDirectory, "A_badcafe", DrivelineFile))
+            new RootedPath(destDir, Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), VehicleListFile))));
+        fs.GetFile(Path.Combine(destDir, GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), DrivelineFile))
             .TextContents.Should().Be(drivelineRecord.Trim());
         backupStrategyMock.Verify(m => m.AfterInstall(
-            new RootedPath(destDir, Path.Combine(GameSupportedModDirectory, "A_badcafe", DrivelineFile))));
+            new RootedPath(destDir, Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 0xbadcafe), DrivelineFile))));
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class ModInstallerTest
         var modInstaller = InstallWithModInstaller(InstallerOf("A", null, packageFiles));
 
         var expectedFiles = packageFiles.Concat([
-            Path.Combine(GameSupportedModDirectory, "A_0", VehicleListFile)
+            Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", null), VehicleListFile)
             // No mod xml
         ]).ToArray();
 
@@ -154,7 +154,7 @@ public class ModInstallerTest
 
         var modInstaller = InstallWithModInstaller(InstallerOf("Bee Cee", null, packageFiles));
 
-        var trackListFile = Path.Combine(GameSupportedModDirectory, "BeeCee_0", TrackListFile);
+        var trackListFile = Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("Bee Cee", null), TrackListFile);
         var expectedFiles = packageFiles.Concat([
             trackListFile
             // No mod xml
@@ -218,12 +218,36 @@ public class ModInstallerTest
 
         fs.AllFiles.Should().BeEquivalentTo(ToDestPath([
             .. files,
-            Path.Combine(GameSupportedModDirectory, "A_1", VehicleListFile),
-            Path.Combine(GameSupportedModDirectory, "A_1", TrackListFile),
+            Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 1), VehicleListFile),
+            Path.Combine(GameSupportedModDirectory, ModInstaller.ConfigurationName("A", 1), TrackListFile),
         ]));
     }
 
     #region Utility Methods
+
+    [Theory]
+    [InlineData("Alpha\\", "alpha/")]
+    [InlineData("A-B.zip", "a-b.ZIP")]
+    public void ConfigurationIdentityIsCaseAndSeparatorIndependent(string first, string second)
+    {
+        ModInstaller.ConfigurationName(first, 1).Should().Be(ModInstaller.ConfigurationName(second, 1));
+    }
+
+    [Theory]
+    [InlineData("A.zip", "A.zip\\")]
+    [InlineData("A-B.zip", "AB.zip")]
+    [InlineData("Alpha\\", "Beta\\")]
+    [InlineData("日本.zip", "中国.zip")]
+    public void ConfigurationIdentityDistinguishesPackagesWithTheSameVersion(string first, string second)
+    {
+        ModInstaller.ConfigurationName(first, 1).Should().NotBe(ModInstaller.ConfigurationName(second, 1));
+    }
+
+    [Fact]
+    public void ConfigurationIdentityBoundsTheReadableStem()
+    {
+        ModInstaller.ConfigurationName(new string('A', 200) + ".zip", 1).Split('_')[0].Should().HaveLength(32);
+    }
 
     private ModInstaller InstallWithModInstaller(IPackageInstaller inner)
     {

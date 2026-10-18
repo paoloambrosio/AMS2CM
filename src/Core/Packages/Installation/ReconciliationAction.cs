@@ -9,6 +9,7 @@ public interface IReconciliationAction
 {
     string PackageName { get; }
     int? PackageVersionHash { get; }
+    int InstallationFormatVersion => 0;
     IReadOnlySet<string> PackageDependencies { get; }
     DateTimeOffset InstallTime { get; }
     IInstallation.State InstallState { get; }
@@ -60,6 +61,7 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
 
         public string PackageName => installer.PackageName;
         public int? PackageVersionHash => installer.PackageVersionHash;
+        public int InstallationFormatVersion => installer.InstallationFormatVersion;
         public IReadOnlySet<string> PackageDependencies => installer.PackageDependencies;
         public IReadOnlySet<string> ShadowedBy => ImmutableHashSet<string>.Empty;
 
@@ -172,6 +174,7 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
 
         public string PackageName { get; }
         public int? PackageVersionHash => originalState.VersionHash;
+        public int InstallationFormatVersion => originalState.InstallationFormatVersion;
         public IReadOnlySet<string> PackageDependencies => originalState.Dependencies.ToImmutableHashSet();
         public IReadOnlySet<string> ShadowedBy => originalState.ShadowedBy.ToImmutableHashSet();
 
