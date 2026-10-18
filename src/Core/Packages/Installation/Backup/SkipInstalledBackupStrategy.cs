@@ -56,6 +56,9 @@ internal class SkipInstalledBackupStrategy(
 
     public void AfterInstall(RootedPath path)
     {
+        // Invalidate the former owner's baseline before reading the new file's attributes.
+        installedFiles[path] = installTime;
+        FileStates[path] = InstalledFileState.Unknown;
         try
         {
             inner.AfterInstall(path);
@@ -63,8 +66,7 @@ internal class SkipInstalledBackupStrategy(
         finally
         {
             // A write already ran, even when subsequent bookkeeping failed.
-            FileStates[path] = InstalledFileState.Capture(fs, path);
-            installedFiles[path] = installTime;
+            FileStates[path] = InstalledFileState.CaptureAfterWrite(fs, path);
         }
     }
 
@@ -77,10 +79,16 @@ internal class SkipInstalledBackupStrategy(
         FileStates.Remove(path);
     }
 
-    private bool FileUpdated(RootedPath path, DateTimeOffset installedAt) =>
-        fs.File.Exists(path.Full) && (FileStates.TryGetValue(path, out var previous)
-            ? !previous.Matches(fs, path)
-            : fs.File.GetCreationTimeUtc(path.Full) > installedAt.UtcDateTime);
+    private bool FileUpdated(RootedPath path, DateTimeOffset installedAt)
+    {
+        if (FileStates.TryGetValue(path, out var previous))
+        {
+            // An unknown baseline must never fall through to timestamp inference.
+            var matches = previous.Matches(fs, path);
+            return !matches && fs.File.Exists(path.Full);
+        }
+        return fs.File.Exists(path.Full) && fs.File.GetCreationTimeUtc(path.Full) > installedAt.UtcDateTime;
+    }
 
     public void DeleteBackup(RootedPath path) => inner.DeleteBackup(path);
 }

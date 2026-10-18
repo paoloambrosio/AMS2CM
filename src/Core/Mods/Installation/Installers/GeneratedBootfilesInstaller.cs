@@ -19,6 +19,8 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     private readonly Lazy<IDirectoryInfo> extractionDirectory;
     private readonly Action<string, string> extractPak;
     private readonly PackageInstallationState? previousInstallation;
+    private IReadOnlyDictionary<string, string> sourcePaths = new Dictionary<string, string>();
+    private bool prepared;
     private readonly string BmtFilesWildcard =
         Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
 
@@ -46,7 +48,8 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
 
     private int HashSources(IFileSystem fs)
     {
-        var files = new[] { BootFlowPakFileName, BootSplashPakFileName, PhysicsPersistentPakFileName }
+        var names = new[] { BootFlowPakFileName, BootSplashPakFileName, PhysicsPersistentPakFileName };
+        var files = names
             .Select(name =>
             {
                 var live = fs.FileInfo.New(fs.Path.Combine(pakPath, name));
@@ -69,12 +72,21 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
                 throw new FileNotFoundException("Missing game file required to generate bootfiles", file.FullName);
             }
         }
+        sourcePaths = names.Zip(files).ToDictionary(pair => pair.First, pair => pair.Second.FullName);
         return FileSystemHash.Hash32(files);
+    }
+
+    internal void Prepare()
+    {
+        if (prepared) return;
+        _ = PackageVersionHash;
+        GenerateBootfiles();
+        prepared = true;
     }
 
     protected override void InstallAllFiles(InstallBody body)
     {
-        GenerateBootfiles();
+        Prepare();
         base.InstallAllFiles(body);
     }
 
@@ -90,13 +102,13 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
         ExtractPakFileFromGame(BootFlowPakFileName);
         ExtractPakFileFromGame(PhysicsPersistentPakFileName);
         CreateEmptyFile(ExtractedPakPath($"{PhysicsPersistentPakFileName}{BaseInstaller.RemoveFileSuffix}"));
-        FileSystem.File.Copy(Path.Combine(pakPath, BootSplashPakFileName), ExtractedPakPath(BootFlowPakFileName));
+        FileSystem.File.Copy(sourcePaths[BootSplashPakFileName], ExtractedPakPath(BootFlowPakFileName));
         DeleteFromExtractedFiles(BmtFilesWildcard);
     }
 
     private void ExtractPakFileFromGame(string fileName)
     {
-        var filePath = Path.Combine(pakPath, fileName);
+        var filePath = sourcePaths[fileName];
         extractPak(filePath, Source.FullName);
     }
 

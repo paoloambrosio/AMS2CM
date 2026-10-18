@@ -73,6 +73,11 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
 
     public void NotRequired() => eventHandler.PostProcessingNotRequired();
 
+    public void Prepare()
+    {
+        if (Inner is GeneratedBootfilesInstaller generated) generated.Prepare();
+    }
+
     public void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
     {
         var modConfigs = CollectModConfig();

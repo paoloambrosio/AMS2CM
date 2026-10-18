@@ -51,6 +51,9 @@ public class PackageReconciliationService<TEventHandler>(
         var uninstall = state is not null &&
             (installer is null || NeedsReinstall(packageName, state, installer, context));
 
+        if (installer is not null && (state is null || uninstall))
+            PrepareInstall(installer);
+
         if (uninstall)
         {
             actions.Add(context.Uninstall(packageName, state!));
@@ -67,12 +70,16 @@ public class PackageReconciliationService<TEventHandler>(
     protected virtual bool NeedsReinstall(string packageName, PackageInstallationState state,
         IPackageInstaller installer, ReconciliationContext context) =>
         state.Partial ||
+        context.CurrentState.GetValueOrDefault(packageName)?.Partial == true ||
+        context.IsNewlyShadowed(packageName, state) ||
         state.VersionHash is null ||
         installer.PackageVersionHash is null ||
         state.VersionHash != installer.PackageVersionHash ||
         context.FilesChanged(state) ||
         state.ShadowedBy.Any(context.ToUninstall.Contains) ||
         state.ShadowedBy.Any(name => !context.Processed.Contains(name));
+
+    protected virtual void PrepareInstall(IPackageInstaller installer) { }
 
     protected sealed class ReconciliationContext
     {
@@ -170,7 +177,7 @@ public class PackageReconciliationService<TEventHandler>(
 
         internal bool IsNewlyShadowed(string packageName, PackageInstallationState previous) =>
             previous.Files.Any(path => ClaimedBy(new(installDir, path)) is { } owner &&
-                owner != packageName && !previous.ShadowedBy.Contains(owner));
+                owner != packageName);
 
         internal void UpdateState(IReconciliationAction action, IReadOnlyCollection<string> shadowedBy)
         {

@@ -266,7 +266,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
     }
 
     [Fact]
-    public void Apply_DoesNotBackUpFilesShadowedInKeptPackages()
+    public void Apply_DoesNotBackUpTheFileTransferredFromAnExistingPackage()
     {
         InstallationState = new Dictionary<string, PackageInstallationState>
         {
@@ -282,8 +282,11 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
         InstallationState["A"].Files.Should().Equal("Shared");
         InstallationState["B"].Files.Should().Equal("BF");
         InstallationState["B"].ShadowedBy.Should().Equal("A");
-        BackupStrategyMock.Verify(m => m.PerformBackup(It.IsAny<RootedPath>()), Times.Never);
+        BackupStrategyMock.Verify(m => m.PerformBackup(DestinationPath("Shared")), Times.Never);
         BackupStrategyMock.Verify(m => m.AfterInstall(DestinationPath("Shared")), Times.Once);
+        BackupStrategyMock.Verify(m => m.RestoreBackup(DestinationPath("BF")), Times.Once);
+        BackupStrategyMock.Verify(m => m.PerformBackup(DestinationPath("BF")), Times.Once);
+        BackupStrategyMock.Verify(m => m.AfterInstall(DestinationPath("BF")), Times.Once);
         BackupStrategyMock.VerifyNoOtherCalls();
     }
 
@@ -437,7 +440,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
 
         InstallationState.Should().BeEquivalentTo(new Dictionary<string, PackageInstallationState>
         {
-            ["A"] = new(Time: ValueNotUsed, VersionHash: 0, Partial: false, Dependencies: [], Files: [
+            ["A"] = new(Time: TestInstallationTimeUtc, VersionHash: 0, Partial: false, Dependencies: [], Files: [
                 "AF"
             ], ShadowedBy: ["B"]),
             ["B"] = new(Time: TestInstallationTimeUtc, VersionHash: 0, Partial: false, Dependencies: [], Files: [

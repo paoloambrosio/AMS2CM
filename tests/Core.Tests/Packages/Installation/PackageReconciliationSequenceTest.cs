@@ -66,7 +66,7 @@ public class PackageReconciliationSequenceTest
         Apply([Installer("A", 1, ("shared", "A")), b]);
 
         fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
-        fs.File.ReadAllText(PathOf("BF")).Should().Be(nextVersion == 1 ? "B1" : "B2");
+        fs.File.ReadAllText(PathOf("BF")).Should().Be("B2", "losing ownership now rebuilds B even at the same version");
         state["A"].Files.Should().Equal("shared");
         state["B"].Files.Should().Equal("BF");
         if (!dropsSharedFile)
@@ -177,7 +177,7 @@ public class PackageReconciliationSequenceTest
         {
             state["B"].Files.Should().Equal("BF");
             state["B"].ShadowedBy.Should().Equal("A");
-            state["B"].Partial.Should().BeFalse();
+            state["B"].Partial.Should().BeTrue("its configuration and dependencies must be rebuilt after ownership changes");
         }
         AssertOriginalBackup(true);
 
@@ -862,6 +862,144 @@ public class PackageReconciliationSequenceTest
         fs.File.ReadAllText(PathOf("Shared.orig")).Should().Be("Updated game original");
         Apply([]);
         fs.File.ReadAllText(PathOf("Shared")).Should().Be("Updated game original");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_RegeneratesConfigurationAfterLosingAVehicle(bool interrupted)
+    {
+        var config = new ModInstallConfig { GenerateModDetails = false };
+        var crd = Path.Combine("vehicles", "Car.crd");
+        var list = Path.Combine(config.GameSupportedModDir, "B_1", config.VehicleListFileName);
+        IPackageInstaller Mod() => new ModInstaller(fs, Installer("B", 1, (crd, "Car")),
+            "Temp", config, installDir, "Bootfiles");
+        Apply([Mod()]);
+        fs.File.ReadAllText(PathOf(list)).Should().Contain(crd);
+        using var cancellation = new CancellationTokenSource();
+        if (interrupted)
+            events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>())).Callback(cancellation.Cancel);
+
+        Apply([Installer("A", 1, (crd + "-remove", "")), Mod()], cancellation.Token);
+        if (interrupted)
+        {
+            state["B"].Partial.Should().BeTrue("its generated configuration still needs rebuilding");
+            ReloadState();
+            events.Reset();
+            Apply([Installer("A", 1, (crd + "-remove", "")), Mod()]);
+        }
+
+        fs.File.Exists(PathOf(crd)).Should().BeFalse();
+        fs.File.Exists(PathOf(list)).Should().BeFalse();
+        state.Should().NotContainKey("B", "it no longer owns files or configuration requiring bootfiles");
+        Apply([]);
+        fs.AllFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, true)]
+    public void Apply_MetadataReadFailureUsesAFingerprintAndPreservesGameUpdates(bool gameUpdated, bool reapply, bool removal)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        var infos = new Mock<IFileInfoFactory>();
+        infos.Setup(i => i.New(It.IsAny<string>())).Throws(new IOException("Cannot read file attributes"));
+        var fileSystem = new Mock<IFileSystem>();
+        fileSystem.SetupGet(f => f.File).Returns(fs.File);
+        fileSystem.SetupGet(f => f.FileInfo).Returns(infos.Object);
+        var provider = new Mock<IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler>>();
+        provider.Setup(p => p.BackupStrategy(It.IsAny<DateTimeOffset>(), It.IsAny<PackageReconciliationService.IEventHandler>()))
+            .Returns((DateTimeOffset installedAt, PackageReconciliationService.IEventHandler handler) =>
+                new SkipUpdatedBackupStrategy(fs, realBackups, installedAt, handler));
+        var failingService = new PackageReconciliationService<PackageReconciliationService.IEventHandler>(provider.Object, fileSystem.Object);
+        var earlier = new FakeTimeProvider(DateTimeOffset.UtcNow.AddMinutes(-1));
+        var target = removal ? "Shared-remove" : "Shared";
+        var installer = new StaticFilesInstaller(fs, earlier, "A", 1, new Dictionary<string, string> { [target] = "A" }, []);
+        var package = new Mock<IPackage>();
+        package.Setup(p => p.CreateInstaller()).Returns(installer);
+
+        failingService.Reconcile(state, [package.Object], installDir,
+            current => state = current, events.Object, CancellationToken.None);
+        state["A"].Partial.Should().BeFalse();
+        ReloadState();
+        if (gameUpdated) fs.File.WriteAllText(PathOf("Shared"), "Updated game original");
+        if (reapply) Apply([Installer("A", 1, (target, "A"))]);
+
+        Apply([]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be(gameUpdated ? "Updated game original" : "Original");
+        fs.File.Exists(PathOf("Shared.orig")).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_UnrecordedWritesPreserveBothCopiesAfterOwnershipTransfer(bool gameUpdated)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("B", 1, ("Shared", "B"))]);
+        var failMetadata = false;
+        backups.Setup(b => b.AfterInstall(It.IsAny<RootedPath>())).Callback(() => failMetadata = true);
+        var infos = new Mock<IFileInfoFactory>();
+        infos.Setup(i => i.New(It.IsAny<string>())).Returns((string path) =>
+            failMetadata ? throw new IOException("Cannot read file attributes") : fs.FileInfo.New(path));
+        var files = new Mock<IFile>();
+        files.Setup(f => f.Exists(It.IsAny<string>())).Returns((string path) => fs.File.Exists(path));
+        files.Setup(f => f.OpenRead(It.IsAny<string>())).Throws(new UnauthorizedAccessException("Cannot read contents"));
+        var fileSystem = new Mock<IFileSystem>();
+        fileSystem.SetupGet(f => f.File).Returns(files.Object);
+        fileSystem.SetupGet(f => f.FileInfo).Returns(infos.Object);
+        var provider = new Mock<IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler>>();
+        provider.Setup(p => p.BackupStrategy(It.IsAny<DateTimeOffset>(), It.IsAny<PackageReconciliationService.IEventHandler>()))
+            .Returns((DateTimeOffset installedAt, PackageReconciliationService.IEventHandler handler) =>
+                new SkipUpdatedBackupStrategy(fs, backups.Object, installedAt, handler));
+        var failingService = new PackageReconciliationService<PackageReconciliationService.IEventHandler>(provider.Object, fileSystem.Object);
+        var package = new Mock<IPackage>();
+        package.Setup(p => p.CreateInstaller()).Returns(Installer("A", 1, ("Shared", "A")));
+        var previousOwner = new Mock<IPackage>();
+        previousOwner.Setup(p => p.CreateInstaller()).Returns(Installer("B", 1, ("Shared", "B")));
+        var apply = () => failingService.Reconcile(state, [package.Object, previousOwner.Object], installDir,
+            current => state = current, events.Object, CancellationToken.None);
+
+        apply.Should().Throw<IOException>();
+        state["A"].Partial.Should().BeTrue();
+        state["A"].FileStates["Shared"].Should().Be(InstalledFileState.Unknown,
+            "A must not inherit B's snapshot when neither metadata nor contents could be recorded");
+        ReloadState();
+        if (gameUpdated) fs.File.WriteAllText(PathOf("Shared"), "Updated game original");
+
+        var cleanup = () => Apply([]);
+        cleanup.Should().Throw<IOException>().WithMessage("*manual recovery*");
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be(gameUpdated ? "Updated game original" : "A");
+        fs.File.ReadAllText(PathOf("Shared.orig")).Should().Be("Original");
+        state["A"].Partial.Should().BeTrue();
+        state.Should().NotContainKey("B");
+    }
+
+    [Fact]
+    public void Apply_RebuildsConfigurationWhenAnExistingShadowerTakesAnotherVehicle()
+    {
+        var config = new ModInstallConfig { GenerateModDetails = false };
+        var shared = Path.Combine("vehicles", "Shared.crd");
+        var other = Path.Combine("vehicles", "Other.crd");
+        var list = Path.Combine(config.GameSupportedModDir, "B_1", config.VehicleListFileName);
+        IPackageInstaller Mod() => new ModInstaller(fs, Installer("B", 1, (shared, "B"), (other, "B")),
+            "Temp", config, installDir, "Bootfiles");
+        fs.Directory.CreateDirectory(PathOf("vehicles"));
+        Apply([Installer("A", 1, (shared + "-remove", "")), Mod()]);
+        state["B"].ShadowedBy.Should().Contain("A");
+        fs.File.ReadAllText(PathOf(list)).Should().Be(other);
+
+        Apply([Installer("A", 2, (shared + "-remove", ""), (other + "-remove", "")), Mod()]);
+
+        fs.File.Exists(PathOf(list)).Should().BeFalse();
+        state.Should().NotContainKey("B");
+        Apply([]);
+        fs.AllFiles.Should().BeEmpty();
     }
 
     private IPackageInstaller Installer(string name, int version, params (string Path, string Contents)[] files) =>

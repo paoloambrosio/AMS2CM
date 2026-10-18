@@ -62,6 +62,8 @@ internal sealed class ReconciliationState
 
             SetPackage(name, installed with
             {
+                // Derived configuration and dependencies must reflect the surviving files.
+                Partial = true,
                 Files = installed.Files.Except(transferred.Select(p => p.Path)).ToImmutableHashSet(),
                 RemovedFiles = installed.RemovedFiles.Except(transferred.Select(p => p.Path), StringComparer.OrdinalIgnoreCase)
                     .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase),

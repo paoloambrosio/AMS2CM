@@ -281,14 +281,20 @@ public class JsonFileStatePersistenceTest
                 ["P"] = new(
                     Time: DateTimeOffset.UtcNow, VersionHash: 42, Partial: true,
                     Dependencies: ["D"],
-                    Files: ["F", "Removed"],
+                    Files: ["F", "Removed", "Fingerprint", "Unknown"],
                     ShadowedBy: ["S"])
                 {
                     RemovedFiles = ["Removed"],
                     FileStates = new Dictionary<string, InstalledFileState>
                     {
                         ["F"] = new(true, 17, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow),
-                        ["Removed"] = new(false, 0, default, default)
+                        ["Removed"] = new(false, 0, default, default),
+                        ["Fingerprint"] = new(true, 0, default, default)
+                        {
+                            MetadataUnavailable = true,
+                            ContentHash = "ABCDEF"
+                        },
+                        ["Unknown"] = InstalledFileState.Unknown
                     }
                 },
             }

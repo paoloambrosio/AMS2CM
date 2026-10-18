@@ -61,10 +61,10 @@ public class ModReconciliationService<TEventHandler>(
             .ToArray();
     }
 
-    protected override bool NeedsReinstall(string packageName, PackageInstallationState state,
-        IPackageInstaller installer, ReconciliationContext context) =>
-        base.NeedsReinstall(packageName, state, installer, context) ||
-        (installer is IBootfilesInstaller && context.IsNewlyShadowed(packageName, state));
+    protected override void PrepareInstall(IPackageInstaller installer)
+    {
+        if (installer is IBootfilesInstaller bootfiles) bootfiles.Prepare();
+    }
 
     private IBootfilesInstaller CreateBootfilesInstaller(IEnumerable<IPackageInstaller> bootfilesPackageInstallers,
         IReadOnlyDictionary<string, PackageInstallationState> previousState, TEventHandler eventHandler)
