@@ -1,5 +1,4 @@
 ﻿using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -47,14 +46,8 @@ public class PackageReconciliationService<TEventHandler>(
     {
         var state = context.PreviousState.GetValueOrDefault(packageName);
         var actions = new List<IReconciliationAction>();
-        var uninstall = state is not null && (
-            state.Partial ||
-            installer is null ||
-            state.VersionHash is null ||
-            installer.PackageVersionHash is null ||
-            state.VersionHash != installer.PackageVersionHash ||
-            state.ShadowedBy.Intersect(context.ToUninstall).Any() ||
-            (state.ShadowedBy.Count > 0 && !state.ShadowedBy.Any(context.Processed.Contains)));
+        var uninstall = state is not null &&
+            (installer is null || NeedsReinstall(packageName, state, installer, context));
 
         if (uninstall)
         {
@@ -69,20 +62,28 @@ public class PackageReconciliationService<TEventHandler>(
         return actions;
     }
 
+    protected virtual bool NeedsReinstall(string packageName, PackageInstallationState state,
+        IPackageInstaller installer, ReconciliationContext context) =>
+        state.Partial ||
+        state.VersionHash is null ||
+        installer.PackageVersionHash is null ||
+        state.VersionHash != installer.PackageVersionHash ||
+        state.ShadowedBy.Any(context.ToUninstall.Contains) ||
+        (state.ShadowedBy.Count > 0 && !state.ShadowedBy.Any(context.Processed.Contains));
+
     protected sealed class ReconciliationContext
     {
-        private readonly Dictionary<string, PackageInstallationState> currentState;
+        private readonly ReconciliationState state;
         private readonly ReconciliationAction<TEventHandler>.Factory actionFactory;
         private readonly string installDir;
         private readonly HashSet<string> processed = [];
         private readonly HashSet<string> toUninstall = [];
 
         public IReadOnlyDictionary<string, PackageInstallationState> PreviousState { get; }
-        public IReadOnlyDictionary<string, PackageInstallationState> CurrentState { get; }
+        public IReadOnlyDictionary<string, PackageInstallationState> CurrentState => state.Packages;
         public IReadOnlySet<string> Processed => processed;
         public IReadOnlySet<string> ToUninstall => toUninstall;
 
-        internal readonly Dictionary<RootedPath, string> ClaimedFiles = [];
         internal readonly IReadOnlyCollection<(string Name, IPackageInstaller? Installer)> Packages;
 
         internal ReconciliationContext(
@@ -92,8 +93,7 @@ public class PackageReconciliationService<TEventHandler>(
             TEventHandler eventHandler)
         {
             PreviousState = previousState;
-            currentState = new(previousState);
-            CurrentState = new ReadOnlyDictionary<string, PackageInstallationState>(currentState);
+            state = new(installDir, previousState);
             this.installDir = installDir;
 
             var joined = new OrderedDictionary<string, IPackageInstaller?>();
@@ -134,49 +134,26 @@ public class PackageReconciliationService<TEventHandler>(
         internal IBackupStrategy BackupStrategy(DateTimeOffset time) =>
             actionFactory.BackupStrategyProvider.BackupStrategy(time, actionFactory.EventHandler);
 
+        internal string? ClaimedBy(RootedPath path) => state.ClaimedBy(path);
+
+        internal void Claim(RootedPath path, string packageName) => state.Claim(path, packageName);
+
+        internal bool IsNewlyShadowed(string packageName, PackageInstallationState previous) =>
+            previous.Files.Any(path => ClaimedBy(new(installDir, path)) is { } owner &&
+                owner != packageName && !previous.ShadowedBy.Contains(owner));
+
         internal void UpdateState(IReconciliationAction action, IReadOnlyCollection<string> shadowedBy)
         {
             var files = action.InstalledFiles;
-            if (files.Count == 0)
-            {
-                currentState.Remove(action.PackageName);
-            }
-            else
-            {
-                currentState[action.PackageName] = new(
+            state.Update(action.PackageName, files.Count == 0
+                ? null
+                : new PackageInstallationState(
                     Time: action.InstallTime,
                     VersionHash: action.PackageVersionHash,
                     Partial: action.InstallState == IInstallation.State.PartiallyInstalled,
                     Dependencies: action.PackageDependencies,
                     ShadowedBy: shadowedBy,
-                    Files: files);
-            }
-
-            // A previous owner may never reach its action if this run is interrupted.
-            // Record transferred ownership now, including partially installed files.
-            foreach (var (name, state) in currentState.ToArray())
-            {
-                var transferred = state.Files
-                    .Select(path => (Path: path, Owner: ClaimedFiles.GetValueOrDefault(new(installDir, path))))
-                    .Where(p => p.Owner is not null && p.Owner != name).ToArray();
-                if (transferred.Length == 0)
-                {
-                    continue;
-                }
-                var remaining = state.Files.Except(transferred.Select(p => p.Path)).ToImmutableHashSet();
-                if (remaining.Count == 0)
-                {
-                    currentState.Remove(name);
-                }
-                else
-                {
-                    currentState[name] = state with
-                    {
-                        Files = remaining,
-                        ShadowedBy = state.ShadowedBy.Concat(transferred.Select(p => p.Owner!)).ToImmutableHashSet()
-                    };
-                }
-            }
+                    Files: files));
         }
     }
 
@@ -221,7 +198,7 @@ public class PackageReconciliationService<TEventHandler>(
         {
             Accept = gamePath =>
             {
-                var owner = context.ClaimedFiles.GetValueOrDefault(gamePath);
+                var owner = context.ClaimedBy(gamePath);
                 if (owner is null)
                 {
                     return true;
@@ -232,7 +209,7 @@ public class PackageReconciliationService<TEventHandler>(
                 }
                 return false;
             },
-            Before = gamePath => context.ClaimedFiles.Add(gamePath, action.PackageName)
+            Before = gamePath => context.Claim(gamePath, action.PackageName)
         };
         try
         {

@@ -73,18 +73,21 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
         var modConfigs = CollectModConfig();
         eventHandler.PostProcessingStart();
         ConfigureFile(VehicleListDir.SubPath(VehicleListFileName),
-            string.Join(Environment.NewLine, modConfigs.CrdFileEntries), false,
+            original => ConfigureListContents(original, string.Join(Environment.NewLine, modConfigs.CrdFileEntries)),
             eventHandler.PostProcessingVehicles, backupStrategy, callbacks);
         ConfigureFile(TrackListDir.SubPath(TrackListFileName),
-            string.Join(Environment.NewLine, modConfigs.TrdFileEntries), false,
+            original => ConfigureListContents(original, string.Join(Environment.NewLine, modConfigs.TrdFileEntries)),
             eventHandler.PostProcessingTracks, backupStrategy, callbacks);
-        ConfigureFile(DrivelineDir.SubPath(DrivelineFileName),
-            string.Join(Environment.NewLine + Environment.NewLine, DedupeRecordBlocks(modConfigs.DrivelineRecords)), true,
+        var drivelinePath = DrivelineDir.SubPath(DrivelineFileName);
+        ConfigureFile(drivelinePath,
+            original => ConfigureDrivelineContents(original,
+                string.Join(Environment.NewLine + Environment.NewLine, DedupeRecordBlocks(modConfigs.DrivelineRecords)),
+                drivelinePath.Full),
             eventHandler.PostProcessingDrivelines, backupStrategy, callbacks);
         eventHandler.PostProcessingEnd();
     }
 
-    private void ConfigureFile(RootedPath path, string entries, bool driveline, Action report,
+    private void ConfigureFile(RootedPath path, Func<string, string> configureContents, Action report,
         IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
     {
         if (!callbacks.Accept(path))
@@ -94,21 +97,7 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
         }
         var exists = FileSystem.File.Exists(path.Full);
         var original = exists ? FileSystem.File.ReadAllText(path.Full) : "";
-        var contents = RemoveConfigBlocks(original);
-        if (entries.Length > 0)
-        {
-            var block = WrapConfigBlock(entries);
-            if (driveline && contents.Length > 0)
-            {
-                var end = contents.LastIndexOf("END", StringComparison.Ordinal);
-                if (end < 0) throw new InvalidDataException($"Could not find insertion point in {path.Full}");
-                contents = contents.Insert(end, block);
-            }
-            else
-            {
-                contents += block;
-            }
-        }
+        var contents = configureContents(original);
         if (contents == original) return;
 
         report();
@@ -118,6 +107,24 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
         FileSystem.File.WriteAllText(path.Full, contents);
         backupStrategy.AfterInstall(path);
         callbacks.After(path);
+    }
+
+    internal static string ConfigureListContents(string original, string entries)
+    {
+        var contents = RemoveConfigBlocks(original);
+        return entries.Length == 0 ? contents : contents + ConfigBlock(entries);
+    }
+
+    internal static string ConfigureDrivelineContents(string original, string records, string path)
+    {
+        var contents = RemoveConfigBlocks(original);
+        if (records.Length == 0) return contents;
+        var block = ConfigBlock(records);
+        if (contents.Length == 0) return block;
+
+        var end = contents.LastIndexOf("END", StringComparison.Ordinal);
+        if (end < 0) throw new InvalidDataException($"Could not find insertion point in {path}");
+        return contents.Insert(end, block);
     }
 
     internal static string RemoveConfigBlocks(string contents)
@@ -153,7 +160,9 @@ public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
 
     protected override RootedPath DrivelineDir { get; }
 
-    protected override string WrapConfigBlock(string configBlock) =>
+    protected override string WrapConfigBlock(string configBlock) => ConfigBlock(configBlock);
+
+    private static string ConfigBlock(string configBlock) =>
         $"{Environment.NewLine}### BEGIN AMS2CM{Environment.NewLine}{configBlock}{Environment.NewLine}### END AMS2CM{Environment.NewLine}";
 
     private ConfigEntries CollectModConfig()

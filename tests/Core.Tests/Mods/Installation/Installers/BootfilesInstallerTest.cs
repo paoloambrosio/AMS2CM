@@ -211,6 +211,35 @@ public class BootfilesInstallerTest
     }
 
     [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void ConfigurationReplacesMultipleBlocksAndPreservesOriginalNewlines(string newline)
+    {
+        var original = $"Original{newline}Second line{newline}";
+        var oldBlock = $"{newline}### BEGIN AMS2CM{newline}Old{newline}### END AMS2CM{newline}";
+
+        var updated = BootfilesInstaller.ConfigureListContents(original + oldBlock + oldBlock, "New");
+
+        updated.Should().StartWith(original).And.Contain("New").And.NotContain("Old");
+        BootfilesInstaller.RemoveConfigBlocks(updated).Should().Be(original);
+        BootfilesInstaller.ConfigureListContents(updated, "New").Should().Be(updated);
+        BootfilesInstaller.ConfigureListContents(updated, "").Should().Be(original);
+    }
+
+    [Fact]
+    public void ConfigurationRejectsMissingDrivelineInsertionPointWithoutChangingFile()
+    {
+        var target = Path.Combine(destDir, BootfilesDrivelineDir, DrivelineFileName);
+        fs.AddFile(target, "Original without terminator");
+        fs.AddFile(Path.Combine(destDir, GameSupportedModDirectory, "Mod", DrivelineFileName), "RECORD Test");
+        var configure = () => NewBootfilesInstaller().Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        configure.Should().Throw<InvalidDataException>().WithMessage($"*{target}");
+        fs.File.ReadAllText(target).Should().Be("Original without terminator");
+        backupStrategyMock.VerifyNoOtherCalls();
+    }
+
+    [Theory]
     [InlineData("### BEGIN AMS2CM\nUnclosed")]
     [InlineData("### END AMS2CM")]
     [InlineData("### BEGIN AMS2CM\n### BEGIN AMS2CM\n### END AMS2CM")]

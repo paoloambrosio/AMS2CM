@@ -15,7 +15,8 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
 
     private readonly string pakPath;
     private readonly Lazy<int> versionHash;
-    private readonly Lazy<DirectoryInfo> extractionDirectory;
+    private readonly Lazy<IDirectoryInfo> extractionDirectory;
+    private readonly Action<string, string> extractPak;
     private readonly string BmtFilesWildcard =
         Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
 
@@ -24,18 +25,19 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     {
     }
 
-    internal GeneratedBootfilesInstaller(IFileSystem fs, string packageName, string gameInstallationDirectory, string tempDir) :
-        base(packageName, null)
+    internal GeneratedBootfilesInstaller(IFileSystem fs, string packageName, string gameInstallationDirectory, string tempDir,
+        Action<string, string>? extractPak = null) : base(fs, packageName, null)
     {
         pakPath = Path.Combine(gameInstallationDirectory, PakfilesDirectory);
         var extractionPath = Path.Combine(tempDir, Guid.NewGuid().ToString());
-        extractionDirectory = new(() => Directory.CreateDirectory(extractionPath));
+        extractionDirectory = new(() => fs.Directory.CreateDirectory(extractionPath));
         versionHash = new(() => HashSources(fs));
+        this.extractPak = extractPak ?? ExtractPak;
     }
 
     public override int? PackageVersionHash => versionHash.Value;
 
-    protected override DirectoryInfo Source => extractionDirectory.Value;
+    protected override IDirectoryInfo Source => extractionDirectory.Value;
 
     private int HashSources(IFileSystem fs)
     {
@@ -60,9 +62,9 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
         base.InstallAllFiles(body);
     }
 
-    protected override void InstallFile(RootedPath destinationPath, FileInfo fileInfo)
+    protected override void InstallFile(RootedPath destinationPath, IFileInfo fileInfo)
     {
-        File.Move(fileInfo.FullName, destinationPath.Full, overwrite: true);
+        FileSystem.File.Move(fileInfo.FullName, destinationPath.Full, overwrite: true);
     }
 
     #region Bootfiles Generation
@@ -72,16 +74,22 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
         ExtractPakFileFromGame(BootFlowPakFileName);
         ExtractPakFileFromGame(PhysicsPersistentPakFileName);
         CreateEmptyFile(ExtractedPakPath($"{PhysicsPersistentPakFileName}{BaseInstaller.RemoveFileSuffix}"));
-        File.Copy(Path.Combine(pakPath, BootSplashPakFileName), ExtractedPakPath(BootFlowPakFileName));
+        FileSystem.File.Copy(Path.Combine(pakPath, BootSplashPakFileName), ExtractedPakPath(BootFlowPakFileName));
         DeleteFromExtractedFiles(BmtFilesWildcard);
     }
 
     private void ExtractPakFileFromGame(string fileName)
     {
         var filePath = Path.Combine(pakPath, fileName);
+        extractPak(filePath, Source.FullName);
+    }
+
+    // PCarsTools accesses disk directly; all other file operations use the injected filesystem.
+    private static void ExtractPak(string filePath, string destinationDirectory)
+    {
         BPakFileEncryption.SetKeyset(KeysetType.PC2AndAbove);
         using var pakFile = BPakFile.FromFile(filePath, withExtraInfo: true, outputWriter: TextWriter.Null);
-        pakFile.UnpackAll(Source.FullName);
+        pakFile.UnpackAll(destinationDirectory);
     }
 
     private string ExtractedPakPath(string name) =>
@@ -90,21 +98,21 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     private void CreateEmptyFile(string path)
     {
         CreateParentDirectory(path);
-        File.Create(path).Close();
+        FileSystem.File.Create(path).Close();
     }
 
     private void CreateParentDirectory(string path)
     {
         var parent = Path.GetDirectoryName(path);
         if (parent is not null)
-            Directory.CreateDirectory(parent);
+            FileSystem.Directory.CreateDirectory(parent);
     }
 
     private void DeleteFromExtractedFiles(string wildcardRelative)
     {
-        foreach (var file in Directory.EnumerateFiles(Source.FullName, wildcardRelative))
+        foreach (var file in FileSystem.Directory.EnumerateFiles(Source.FullName, wildcardRelative))
         {
-            File.Delete(file);
+            FileSystem.File.Delete(file);
         }
     }
 

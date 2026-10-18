@@ -53,16 +53,16 @@ public class ModReconciliationService<TEventHandler>(
 
         // Resolve generation inputs before any uninstall moves backups or installation changes them.
         _ = bootfiles.PackageVersionHash;
-        var newlyShadowed = previous is not null && previous.Files.Any(path =>
-            context.ClaimedFiles.TryGetValue(new(context.InstallDir, path), out var owner) &&
-            owner != packageName && !previous.ShadowedBy.Contains(owner));
-        var actions = newlyShadowed
-            ? new List<IReconciliationAction> { context.Uninstall(packageName, previous!), context.Install(bootfiles) }
-            : base.ReconciliationActions(packageName, installer, context).ToList();
-        actions.Add(new BootfilesConfigurationAction(bootfiles, context.InstallDir,
-            () => context.CurrentState.GetValueOrDefault(packageName), context.BackupStrategy));
-        return actions;
+        return base.ReconciliationActions(packageName, installer, context)
+            .Append(new BootfilesConfigurationAction(bootfiles, context.InstallDir,
+                () => context.CurrentState.GetValueOrDefault(packageName), context.BackupStrategy))
+            .ToArray();
     }
+
+    protected override bool NeedsReinstall(string packageName, PackageInstallationState state,
+        IPackageInstaller installer, ReconciliationContext context) =>
+        base.NeedsReinstall(packageName, state, installer, context) ||
+        (installer is IBootfilesInstaller && context.IsNewlyShadowed(packageName, state));
 
     private IBootfilesInstaller CreateBootfilesInstaller(IEnumerable<IPackageInstaller> bootfilesPackageInstallers, TEventHandler eventHandler)
     {

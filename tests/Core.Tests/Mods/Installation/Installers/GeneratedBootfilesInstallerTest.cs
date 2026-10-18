@@ -1,4 +1,5 @@
-﻿using System.IO.Abstractions.TestingHelpers;
+﻿using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
 using Core.Mods.Installation.Installers;
 using FluentAssertions;
 using static Core.Mods.Installation.Installers.GeneratedBootfilesInstaller;
@@ -19,6 +20,22 @@ public class GeneratedBootfilesInstallerTest
         _ = NewInstaller();
         fs.AllFiles.Should().BeEmpty();
         fs.AllDirectories.Should().BeEquivalentTo(directories);
+    }
+
+    [Fact]
+    public void DirectoryEnumerationCreatesOneExtractionDirectoryInTheInjectedFilesystem()
+    {
+        var fileSystem = new Mock<IFileSystem>();
+        var directory = new Mock<IDirectoryInfo>();
+        directory.Setup(d => d.EnumerateDirectories("*", It.IsAny<EnumerationOptions>())).Returns([]);
+        fileSystem.Setup(f => f.Directory.CreateDirectory(It.IsAny<string>())).Returns(directory.Object);
+        var installer = new GeneratedBootfilesInstaller(fileSystem.Object, "Generated", "Game", "Temp");
+        fileSystem.Verify(f => f.Directory.CreateDirectory(It.IsAny<string>()), Times.Never);
+
+        installer.RelativeDirectoryPaths.Should().BeEmpty();
+        installer.RelativeDirectoryPaths.Should().BeEmpty();
+
+        fileSystem.Verify(f => f.Directory.CreateDirectory(It.IsAny<string>()), Times.Once);
     }
 
     [Fact]

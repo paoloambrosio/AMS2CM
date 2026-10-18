@@ -281,6 +281,51 @@ public class PackageReconciliationSequenceTest
     }
 
     [Fact]
+    public void Apply_CancellationTransfersAllHistoricalOwnersAndLeavesUnrelatedPackagesUntouched()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([
+            Installer("B", 1, ("Shared", "B"), ("BF", "B")),
+            Installer("C", 1, ("CF", "C")),
+            Installer("Unrelated", 1, ("UF", "U"))
+        ]);
+        // Historical state may contain multiple owners, including differently cased paths.
+        state = new Dictionary<string, PackageInstallationState>(state)
+        {
+            ["C"] = state["C"] with { Files = ["shared", "CF"] }
+        };
+        var unrelated = state["Unrelated"];
+        using var cancellation = new CancellationTokenSource();
+        events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>())).Callback(cancellation.Cancel);
+
+        Apply([
+            Installer("A", 1, ("SHARED", "A")),
+            Installer("B", 1, ("Shared", "B"), ("BF", "B")),
+            Installer("C", 1, ("Shared", "C"), ("CF", "C")),
+            Installer("Unrelated", 1, ("UF", "U"))
+        ], cancellation.Token);
+
+        state["B"].Files.Should().Equal("BF");
+        state["C"].Files.Should().Equal("CF");
+        state["B"].ShadowedBy.Should().Equal("A");
+        state["C"].ShadowedBy.Should().Equal("A");
+        state["Unrelated"].Should().BeSameAs(unrelated);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        AssertOriginalBackup(true);
+
+        Apply([
+            Installer("B", 1, ("Shared", "B"), ("BF", "B")),
+            Installer("C", 1, ("Shared", "C"), ("CF", "C")),
+            Installer("Unrelated", 1, ("UF", "U"))
+        ]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("B");
+        state["C"].ShadowedBy.Should().Equal("B");
+
+        Apply([]);
+        AssertRestoredFilesystem(true);
+    }
+
+    [Fact]
     public void Apply_ReportsProgressPerPackageIncludingReinstallPairs()
     {
         Apply([Installer("A", 1, ("AF", "A")), Installer("B", 1, ("BF", "B"))]);

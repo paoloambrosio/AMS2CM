@@ -1,6 +1,9 @@
-﻿namespace Core.Packages.Installation.Installers;
+﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 
-internal abstract class BaseDirectoryInstaller : BaseInstaller<FileInfo>
+namespace Core.Packages.Installation.Installers;
+
+internal abstract class BaseDirectoryInstaller : BaseInstaller<IFileInfo>
 {
     private static readonly EnumerationOptions RecursiveEnumeration = new()
     {
@@ -11,11 +14,16 @@ internal abstract class BaseDirectoryInstaller : BaseInstaller<FileInfo>
     };
 
     protected BaseDirectoryInstaller(string packageName, int? packageVersionHash) :
-        base(packageName, packageVersionHash)
+        this(new FileSystem(), packageName, packageVersionHash)
     {
     }
 
-    protected abstract DirectoryInfo Source { get; }
+    protected BaseDirectoryInstaller(IFileSystem fs, string packageName, int? packageVersionHash) :
+        base(fs, TimeProvider.System, packageName, packageVersionHash, ImmutableHashSet<string>.Empty)
+    {
+    }
+
+    protected abstract IDirectoryInfo Source { get; }
 
     public override IEnumerable<string> RelativeDirectoryPaths =>
         Source.EnumerateDirectories("*", RecursiveEnumeration)
