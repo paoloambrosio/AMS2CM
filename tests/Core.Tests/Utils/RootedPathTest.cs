@@ -15,7 +15,9 @@ public class RootedPathTest
         path.Equals(new RootedPath("ROOT", "DIR\\FILE.TXT")).Should().BeTrue();
 
         path.Equals(new RootedPath("root", "dir\\other.txt")).Should().BeFalse();
-        path.Equals(new RootedPath("root", "dir\\..\\dir\\file.txt")).Should().BeFalse();
+        path.Equals(new RootedPath("root", "dir\\..\\dir\\file.txt")).Should().BeTrue();
+        path.Equals(new RootedPath("root", "dir\\.\\file.txt")).Should().BeTrue();
+        path.Equals(new RootedPath("root\\", "dir/file.txt")).Should().BeTrue();
         path.Equals(null).Should().BeFalse();
     }
 
@@ -28,6 +30,7 @@ public class RootedPathTest
         path.GetHashCode().Should().Be(new RootedPath("ROOT", "DIR\\FILE.TXT").GetHashCode());
 
         path.GetHashCode().Should().NotBe(new RootedPath("root", "dir\\other.txt").GetHashCode());
-        path.GetHashCode().Should().NotBe(new RootedPath("root", "dir\\..\\dir\\file.txt").GetHashCode());
+        path.GetHashCode().Should().Be(new RootedPath("root", "dir\\..\\dir\\file.txt").GetHashCode());
+        new HashSet<RootedPath> { path, new("root", "dir\\.\\file.txt") }.Should().ContainSingle();
     }
 }

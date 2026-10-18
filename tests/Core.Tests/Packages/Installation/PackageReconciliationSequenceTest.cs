@@ -1,4 +1,4 @@
-﻿using System.IO.Abstractions.TestingHelpers;
+using System.IO.Abstractions.TestingHelpers;
 using System.IO.Abstractions;
 using Core.API;
 using Core.Mods.Installation.Installers;
@@ -623,7 +623,7 @@ public class PackageReconciliationSequenceTest
         Apply([Installer("A", 1, ("Shared-remove", ""))]);
         state = new Dictionary<string, PackageInstallationState>(state)
         {
-            ["A"] = state["A"] with { RemovedFiles = [] }
+            ["A"] = state["A"] with { RemovedFiles = [], FileStates = new Dictionary<string, InstalledFileState>() }
         };
         events.Invocations.Clear();
 
@@ -717,6 +717,94 @@ public class PackageReconciliationSequenceTest
         fs.File.ReadAllText(PathOf(configPath)).Should().Be("Existing configuration");
     }
 
+    [Fact]
+    public void Apply_FailedUninstallNotificationMustNotConvertMissingFilesIntoRemovalMarkers()
+    {
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+        fs.File.Delete(PathOf("Shared"));
+        events.Setup(e => e.UninstallingPackage("A")).Throws(new IOException("Logger failed"));
+        var apply = () => Apply([Installer("A", 1, ("Shared", "A"))]);
+        apply.Should().Throw<IOException>();
+        events.Reset();
+        ReloadState();
+
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+
+        fs.File.Exists(PathOf("Shared")).Should().BeTrue("the failed notification must not change the expected presence of A's file");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_InPlaceGameUpdateSurvivesUninstall(bool reapply)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+        ReloadState();
+        var creation = fs.File.GetCreationTimeUtc(PathOf("Shared"));
+        fs.File.WriteAllText(PathOf("Shared"), "Updated game original");
+        fs.File.SetCreationTimeUtc(PathOf("Shared"), creation);
+        fs.File.SetLastWriteTimeUtc(PathOf("Shared"), time.GetUtcNow().UtcDateTime);
+
+        if (reapply) Apply([Installer("A", 1, ("Shared", "A"))]);
+        Apply([]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("Updated game original");
+    }
+
+    [Fact]
+    public void Apply_UnwritableCreationTimesDoNotPreventInstallationOrRecovery()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        var files = new Mock<IFile>();
+        files.Setup(f => f.Exists(It.IsAny<string>())).Returns((string path) => fs.File.Exists(path));
+        files.Setup(f => f.GetCreationTimeUtc(It.IsAny<string>())).Returns((string path) => fs.File.GetCreationTimeUtc(path));
+        files.Setup(f => f.SetCreationTimeUtc(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Throws(new UnauthorizedAccessException("Cannot set file attributes"));
+        var fileSystem = new Mock<IFileSystem>();
+        fileSystem.SetupGet(f => f.File).Returns(files.Object);
+        var provider = new Mock<IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler>>();
+        provider.Setup(p => p.BackupStrategy(It.IsAny<DateTimeOffset>(), It.IsAny<PackageReconciliationService.IEventHandler>()))
+            .Returns((DateTimeOffset installedAt, PackageReconciliationService.IEventHandler handler) =>
+                new SkipUpdatedBackupStrategy(fileSystem.Object, realBackups, installedAt, handler));
+        var failingService = new PackageReconciliationService<PackageReconciliationService.IEventHandler>(provider.Object, fs);
+        var earlier = new FakeTimeProvider(DateTimeOffset.UtcNow.AddMinutes(-1));
+        var installer = new StaticFilesInstaller(fs, earlier, "A", 1, new Dictionary<string, string> { ["Shared"] = "A" }, []);
+        var package = new Mock<IPackage>();
+        package.Setup(p => p.CreateInstaller()).Returns(installer);
+        var apply = () => failingService.Reconcile(state, [package.Object], installDir,
+            current => state = current, events.Object, CancellationToken.None);
+
+        apply.Should().NotThrow();
+        files.Verify(f => f.SetCreationTimeUtc(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        state["A"].Partial.Should().BeFalse();
+        fs.File.ReadAllText(PathOf("Shared.orig")).Should().Be("Original");
+        ReloadState();
+
+        Apply([]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("Original", "failure to stamp a managed file must not make it a game update");
+    }
+
+    [Fact]
+    public void Apply_FailedPostWriteBookkeepingStillPersistsManagedFileMetadata()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        backups.Setup(b => b.AfterInstall(new RootedPath(installDir, "Shared"))).Callback<RootedPath>(path =>
+        {
+            fs.File.SetCreationTimeUtc(path.Full, time.GetUtcNow().AddMinutes(1).UtcDateTime);
+            throw new IOException("Bookkeeping failed after writing");
+        });
+        var apply = () => Apply([Installer("A", 1, ("Shared", "A"))]);
+
+        apply.Should().Throw<IOException>();
+        state["A"].Partial.Should().BeTrue();
+        ReloadState();
+        Apply([]);
+
+        AssertRestoredFilesystem(true);
+    }
+
     private void ReloadState()
     {
         var savedState = PathOf("state.json");
@@ -724,6 +812,56 @@ public class PackageReconciliationSequenceTest
         persistence.WriteState(new SavedState(state));
         state = persistence.ReadState().Installation;
         fs.File.Delete(savedState);
+    }
+
+    [Fact]
+    public void Apply_HistoricalPathAliasesRestoreOnePhysicalFileOnlyOnce()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+        state = new Dictionary<string, PackageInstallationState>(state)
+        {
+            ["B"] = state["A"] with { Files = [".\\Shared"] }
+        };
+
+        Apply([]);
+
+        AssertRestoredFilesystem(true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_FileMetadataDetectsInPlaceUpdatesByLengthOrWriteTime(bool changeLength)
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+        var writeTime = fs.File.GetLastWriteTimeUtc(PathOf("Shared"));
+        var update = changeLength ? "Updated game original" : "B";
+        fs.File.WriteAllText(PathOf("Shared"), update);
+        fs.File.SetLastWriteTimeUtc(PathOf("Shared"), changeLength ? writeTime : writeTime.AddSeconds(1));
+        ReloadState();
+
+        Apply([Installer("A", 1, ("Shared", "A"))]);
+
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("A");
+        Apply([]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be(update);
+    }
+
+    [Fact]
+    public void Apply_OwnershipTransferPreservesAnInPlaceGameUpdate()
+    {
+        fs.AddFile(PathOf("Shared"), "Original");
+        Apply([Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+        fs.File.WriteAllText(PathOf("Shared"), "Updated game original");
+        ReloadState();
+
+        Apply([Installer("A", 1, ("Shared", "A")), Installer("B", 1, ("Shared", "B"), ("BF", "B"))]);
+
+        fs.File.ReadAllText(PathOf("Shared.orig")).Should().Be("Updated game original");
+        Apply([]);
+        fs.File.ReadAllText(PathOf("Shared")).Should().Be("Updated game original");
     }
 
     private IPackageInstaller Installer(string name, int version, params (string Path, string Contents)[] files) =>

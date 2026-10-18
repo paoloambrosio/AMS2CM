@@ -82,8 +82,8 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
 
         public void Execute(ProcessingCallbacks<RootedPath> callbacks)
         {
-            EventHandler.UninstallingPackage(PackageName);
             CurrentInstallState = IInstallation.State.PartiallyInstalled;
+            EventHandler.UninstallingPackage(PackageName);
             var filesToUninstall = CurrentInstalledFiles
                 .Select(relativePath => new RootedPath(InstallDir, relativePath)).ToImmutableList();
             foreach (var gamePath in filesToUninstall)
@@ -118,9 +118,10 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
 
         private static List<string> AncestorsUpTo(string root, string path)
         {
+            root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
             var ancestors = new List<string>();
             for (var dir = Directory.GetParent(path);
-                 dir is not null && dir.FullName != root;
+                 dir is not null && !StringComparer.OrdinalIgnoreCase.Equals(dir.FullName, root);
                  dir = dir.Parent)
             {
                 ancestors.Add(dir.FullName);

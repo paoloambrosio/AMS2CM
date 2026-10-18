@@ -76,7 +76,7 @@ public class SkipInstalledBackupStrategyTest
     }
 
     [Fact]
-    public void AfterInstall_FailureDoesNotTrackPath()
+    public void AfterInstall_FailureStillTracksTheWrittenPath()
     {
         var strategy = Provider().BackupStrategy(backupTime, null);
         inner.Setup(m => m.AfterInstall(path)).Throws<IOException>();
@@ -84,7 +84,7 @@ public class SkipInstalledBackupStrategyTest
         strategy.Invoking(m => m.AfterInstall(path)).Should().Throw<IOException>();
         strategy.PerformBackup(path);
 
-        inner.Verify(m => m.PerformBackup(path), Times.Once);
+        inner.Verify(m => m.PerformBackup(path), Times.Never);
     }
 
     [Fact]

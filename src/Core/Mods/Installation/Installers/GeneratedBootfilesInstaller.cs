@@ -56,7 +56,9 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
                 // replace individual files independently, including BOOTFLOW alone.
                 var managed = previousInstallation is { } previous &&
                     previous.Files.Contains(Path.Combine(PakfilesDirectory, name), StringComparer.OrdinalIgnoreCase) &&
-                    live.Exists && live.CreationTimeUtc <= previous.Time.UtcDateTime;
+                    live.Exists && (previous.FileStates.TryGetValue(Path.Combine(PakfilesDirectory, name), out var expected)
+                        ? expected.Matches(fs, new RootedPath(pakPath, name))
+                        : live.CreationTimeUtc <= previous.Time.UtcDateTime);
                 return !live.Exists || managed ? fs.FileInfo.New(live.FullName + ".orig") : live;
             })
             .ToArray();

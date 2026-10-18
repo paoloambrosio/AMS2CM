@@ -80,6 +80,7 @@ public class PackageReconciliationService<TEventHandler>(
         private readonly ReconciliationAction<TEventHandler>.Factory actionFactory;
         private readonly string installDir;
         private readonly IFileSystem fileSystem;
+        private readonly SkipInstalledBackupStrategy.Provider<TEventHandler> trackingBackupProvider;
         private readonly HashSet<string> processed = [];
         private readonly HashSet<string> toUninstall = [];
 
@@ -116,8 +117,14 @@ public class PackageReconciliationService<TEventHandler>(
 
             var previouslyInstalledPaths = previousState.Values
                 .SelectMany(state => state.Files.Select(path => (new RootedPath(installDir, path), state.Time)));
-            var trackingBackupProvider = new SkipInstalledBackupStrategy.Provider<TEventHandler>(
-                backupStrategyProvider, previouslyInstalledPaths, fileSystem);
+            trackingBackupProvider = new SkipInstalledBackupStrategy.Provider<TEventHandler>(
+                backupStrategyProvider, previouslyInstalledPaths, fileSystem)
+            {
+                FileStates = previousState.Values.SelectMany(previous => previous.FileStates
+                        .Select(file => (Path: new RootedPath(installDir, file.Key), State: file.Value, previous.Time)))
+                    .GroupBy(file => file.Path)
+                    .ToDictionary(group => group.Key, group => group.MaxBy(file => file.Time).State)
+            };
             actionFactory = new(installDir, trackingBackupProvider, eventHandler);
         }
 
@@ -152,6 +159,8 @@ public class PackageReconciliationService<TEventHandler>(
                 var path = new RootedPath(installDir, relative);
                 // Higher-priority packages already established the intended contents.
                 if (ClaimedBy(path) is not null) return false;
+                if (trackingBackupProvider.FileStates.TryGetValue(path, out var expected))
+                    return !expected.Matches(fileSystem, path);
                 var exists = fileSystem.File.Exists(path.Full);
                 return removed.Contains(relative)
                     ? exists
@@ -166,6 +175,18 @@ public class PackageReconciliationService<TEventHandler>(
         internal void UpdateState(IReconciliationAction action, IReadOnlyCollection<string> shadowedBy)
         {
             var files = action.InstalledFiles;
+            var previousRemoved = PreviousState.GetValueOrDefault(action.PackageName)?.RemovedFiles
+                .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
+            var expectedFiles = new Dictionary<string, InstalledFileState>(StringComparer.OrdinalIgnoreCase);
+            foreach (var relative in files)
+            {
+                var path = new RootedPath(installDir, relative);
+                if (trackingBackupProvider.FileStates.TryGetValue(path, out var expected))
+                    expectedFiles[relative] = expected;
+                else if (action.InstallState == IInstallation.State.Installed &&
+                         fileSystem.File.Exists(path.Full) != previousRemoved.Contains(relative))
+                    expectedFiles[relative] = InstalledFileState.Capture(fileSystem, path);
+            }
             state.Update(action.PackageName, files.Count == 0
                 ? null
                 : new PackageInstallationState(
@@ -176,8 +197,11 @@ public class PackageReconciliationService<TEventHandler>(
                     ShadowedBy: shadowedBy,
                     Files: files)
                 {
-                    RemovedFiles = files.Where(path => !fileSystem.File.Exists(Path.Combine(installDir, path)))
-                        .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase)
+                    // Preserve intent when an action fails before touching its files.
+                    RemovedFiles = files.Where(path => expectedFiles.TryGetValue(path, out var expected)
+                            ? !expected.Exists : previousRemoved.Contains(path))
+                        .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase),
+                    FileStates = expectedFiles.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase)
                 });
         }
     }

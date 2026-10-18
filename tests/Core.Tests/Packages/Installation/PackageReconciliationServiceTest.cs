@@ -77,7 +77,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["A"] = new(Time: TestInstallationTimeUtc, VersionHash: 42, Partial: false, Dependencies: [], Files: [
                 "AF"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
 
         BackupStrategyMock.Verify(m => m.PerformBackup(DestinationPath("AF")));
         BackupStrategyMock.Verify(m => m.AfterInstall(DestinationPath("AF")));
@@ -147,7 +147,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
                 "AF",
                 "AF2"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
 
         BackupStrategyMock.Verify(m => m.RestoreBackup(DestinationPath("AF1")));
         BackupStrategyMock.Verify(m => m.PerformBackup(DestinationPath("AF2")));
@@ -180,7 +180,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
                 "AF1",
                 "AF2"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
 
         BackupStrategyMock.Verify(m => m.RestoreBackup(DestinationPath("AF1")));
         BackupStrategyMock.Verify(m => m.PerformBackup(DestinationPath("AF1")));
@@ -201,7 +201,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["A"] = new(Time: TestInstallationTimeUtc, VersionHash: 42, Partial: false, Dependencies: ["X"], Files: [
                 "AF"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
     [Fact]
@@ -230,7 +230,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["C"] = new(Time: TestInstallationTimeUtc, VersionHash: 3, Partial: false, Dependencies: [], Files: [
                 "CF"
             ], ShadowedBy: ["A", "B"])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
                 "SF",
                 "AF1"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
     [Fact]
@@ -303,7 +303,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["A"] = new(Time: TestInstallationTimeUtc, VersionHash: 42, Partial: true, Dependencies: [], Files: [
                 "AF1"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
     [Fact]
@@ -329,7 +329,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
                 "Fail", // We don't know where it failed, so we leave it
                 "AF2"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
 
@@ -353,7 +353,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["A"] = new(Time: ValueNotUsed, VersionHash: null, Partial: true, Dependencies: [], Files: [
                 "Fail"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
     [Fact]
@@ -376,7 +376,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["A"] = new(Time: ValueNotUsed, VersionHash: null, Partial: true, Dependencies: [], Files: [
                 "Fail"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
 
@@ -448,7 +448,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             [
                 "UF"
             ], ShadowedBy: [])
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
 
         EventHandlerMock.Verify(m => m.SkippingPackage("Untouched"));
     }
@@ -476,7 +476,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
             ["A"] = new(Time: TestInstallationTimeUtc, VersionHash: 1, Partial: false, Dependencies: [], Files: [
                 "A1",
             ], ShadowedBy: []),
-        });
+        }, options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
     }
 
     [Fact]

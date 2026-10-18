@@ -10,6 +10,9 @@ internal class SkipInstalledBackupStrategy(
     IBackupStrategy inner, IFileSystem fs, IDictionary<RootedPath, DateTimeOffset> installedFiles,
     DateTimeOffset installTime) : IBackupStrategy
 {
+    internal IDictionary<RootedPath, InstalledFileState> FileStates { get; init; } =
+        new Dictionary<RootedPath, InstalledFileState>();
+
     internal class Provider<TEventHandler>(
         IBackupStrategyProvider<DateTimeOffset, TEventHandler> baseProvider,
         IEnumerable<(RootedPath Path, DateTimeOffset Time)> installedFiles,
@@ -21,8 +24,19 @@ internal class SkipInstalledBackupStrategy(
             .GroupBy(file => file.Path)
             .ToDictionary(group => group.Key, group => group.Max(file => file.Time));
 
-        public IBackupStrategy BackupStrategy(DateTimeOffset backupTime, TEventHandler? eventHandler) =>
-            new SkipInstalledBackupStrategy(baseProvider.BackupStrategy(backupTime, eventHandler), fs, currentFiles, backupTime);
+        internal Dictionary<RootedPath, InstalledFileState> FileStates { get; init; } = [];
+
+        public IBackupStrategy BackupStrategy(DateTimeOffset backupTime, TEventHandler? eventHandler)
+        {
+            var inner = baseProvider.BackupStrategy(backupTime, eventHandler);
+            var strategy = new SkipInstalledBackupStrategy(inner, fs, currentFiles, backupTime) { FileStates = FileStates };
+            if (inner is SkipUpdatedBackupStrategy updated)
+            {
+                updated.IsUpdated = path => currentFiles.TryGetValue(path, out var installedAt) &&
+                    strategy.FileUpdated(path, installedAt);
+            }
+            return strategy;
+        }
     }
 
     public void PerformBackup(RootedPath path)
@@ -31,10 +45,10 @@ internal class SkipInstalledBackupStrategy(
         {
             inner.PerformBackup(path);
         }
-        else if (fs.File.Exists(path.Full) && fs.File.GetCreationTimeUtc(path.Full) > installedAt.UtcDateTime)
+        else if (FileUpdated(path, installedAt))
         {
             // An update replaced the previous owner's file. Preserve that new original
-            // before another package overwrites it, using the previous owner's time.
+            // before another package overwrites it, using the previous owner's metadata.
             inner.DeleteBackup(path);
             inner.PerformBackup(path);
         }
@@ -42,15 +56,31 @@ internal class SkipInstalledBackupStrategy(
 
     public void AfterInstall(RootedPath path)
     {
-        inner.AfterInstall(path);
-        installedFiles[path] = installTime;
+        try
+        {
+            inner.AfterInstall(path);
+        }
+        finally
+        {
+            // A write already ran, even when subsequent bookkeeping failed.
+            FileStates[path] = InstalledFileState.Capture(fs, path);
+            installedFiles[path] = installTime;
+        }
     }
 
     public void RestoreBackup(RootedPath path)
     {
+        // Historical states can contain several spellings or owners of one file.
+        if (!installedFiles.ContainsKey(path)) return;
         inner.RestoreBackup(path);
         installedFiles.Remove(path);
+        FileStates.Remove(path);
     }
+
+    private bool FileUpdated(RootedPath path, DateTimeOffset installedAt) =>
+        fs.File.Exists(path.Full) && (FileStates.TryGetValue(path, out var previous)
+            ? !previous.Matches(fs, path)
+            : fs.File.GetCreationTimeUtc(path.Full) > installedAt.UtcDateTime);
 
     public void DeleteBackup(RootedPath path) => inner.DeleteBackup(path);
 }

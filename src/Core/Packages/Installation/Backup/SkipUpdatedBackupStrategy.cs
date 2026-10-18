@@ -28,6 +28,9 @@ internal class SkipUpdatedBackupStrategy : IBackupStrategy
     private readonly IBackupStrategy inner;
     private readonly DateTimeOffset backupTime;
     private readonly IBackupEventHandler? eventHandler;
+    // Reconciliation supplies saved per-file metadata. The timestamp fallback is
+    // retained for callers and saved states that predate that metadata.
+    internal Func<RootedPath, bool>? IsUpdated { get; set; }
 
     private SkipUpdatedBackupStrategy(
         IBackupStrategy backupStrategy,
@@ -57,7 +60,7 @@ internal class SkipUpdatedBackupStrategy : IBackupStrategy
 
     public void RestoreBackup(RootedPath path)
     {
-        if (CreationAfterBackupTime(path))
+        if (IsUpdated?.Invoke(path) ?? CreationAfterBackupTime(path))
         {
             inner.DeleteBackup(path);
             eventHandler?.RestoreSkipped(path);
@@ -70,7 +73,7 @@ internal class SkipUpdatedBackupStrategy : IBackupStrategy
     {
         inner.AfterInstall(path);
 
-        if (CreationAfterBackupTime(path))
+        if (IsUpdated is null && CreationAfterBackupTime(path))
         {
             fs.File.SetCreationTimeUtc(path.Full, backupTime.UtcDateTime);
         }

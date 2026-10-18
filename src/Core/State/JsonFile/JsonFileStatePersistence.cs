@@ -58,7 +58,9 @@ internal class JsonFileStatePersistence : IStatePersistence
                     Files: pis.Files ?? Array.Empty<string>(),
                     ShadowedBy: pis.ShadowedBy ?? Array.Empty<string>())
                 {
-                    RemovedFiles = pis.RemovedFiles ?? Array.Empty<string>()
+                    RemovedFiles = pis.RemovedFiles ?? Array.Empty<string>(),
+                    FileStates = pis.FileStates?.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase) ??
+                        ImmutableDictionary<string, InstalledFileState>.Empty
                 }
                 ).ToImmutableDictionary()
             );
@@ -122,7 +124,8 @@ internal class JsonFileStatePersistence : IStatePersistence
                     ShadowedBy: pis.ShadowedBy
                 )
                 {
-                    RemovedFiles = pis.RemovedFiles
+                    RemovedFiles = pis.RemovedFiles,
+                    FileStates = pis.FileStates
                 })
             ));
 

@@ -1,5 +1,7 @@
 ﻿using Newtonsoft.Json;
 
+using Core.Packages.Installation;
+
 namespace Core.State.JsonFile;
 
 record JsonSavedStateV2(
@@ -22,4 +24,5 @@ record JsonPackageInstallationStateV2(
 )
 {
     public IReadOnlyCollection<string>? RemovedFiles { get; init; }
+    public IReadOnlyDictionary<string, InstalledFileState>? FileStates { get; init; }
 }

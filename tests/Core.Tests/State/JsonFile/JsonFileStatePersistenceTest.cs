@@ -57,6 +57,7 @@ public class JsonFileStatePersistenceTest
         mod.Files.Should().Contain("F");
         mod.ShadowedBy.Should().Contain("S");
         mod.RemovedFiles.Should().BeEmpty();
+        mod.FileStates.Should().BeEmpty();
     }
 
     [Fact]
@@ -281,7 +282,15 @@ public class JsonFileStatePersistenceTest
                     Time: DateTimeOffset.UtcNow, VersionHash: 42, Partial: true,
                     Dependencies: ["D"],
                     Files: ["F", "Removed"],
-                    ShadowedBy: ["S"]) { RemovedFiles = ["Removed"] },
+                    ShadowedBy: ["S"])
+                {
+                    RemovedFiles = ["Removed"],
+                    FileStates = new Dictionary<string, InstalledFileState>
+                    {
+                        ["F"] = new(true, 17, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow),
+                        ["Removed"] = new(false, 0, default, default)
+                    }
+                },
             }
         );
 

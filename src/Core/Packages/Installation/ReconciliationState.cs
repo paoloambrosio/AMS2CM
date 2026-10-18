@@ -65,6 +65,8 @@ internal sealed class ReconciliationState
                 Files = installed.Files.Except(transferred.Select(p => p.Path)).ToImmutableHashSet(),
                 RemovedFiles = installed.RemovedFiles.Except(transferred.Select(p => p.Path), StringComparer.OrdinalIgnoreCase)
                     .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase),
+                FileStates = installed.FileStates.Where(file => !transferred.Any(p => p.Path == file.Key))
+                    .ToImmutableDictionary(StringComparer.OrdinalIgnoreCase),
                 ShadowedBy = installed.ShadowedBy.Concat(transferred.Select(p => p.Owner!)).ToImmutableHashSet()
             });
         }

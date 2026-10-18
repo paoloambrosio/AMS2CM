@@ -1068,7 +1068,8 @@ public class ModManagerTest : AbstractFilesystemTest
                 return new KeyValuePair<string, PackageInstallationState>(mod.Key,
                     mod.Value with { Time = (DateTimeOffset)actualTime });
             });
-            actualMods.Should().BeEquivalentTo(expectedMods);
+            actualMods.Should().BeEquivalentTo(expectedMods,
+                options => options.Excluding(info => info.Path.EndsWith(".FileStates")));
         }
 
         internal void HaveInstalled(IEnumerable<string> expected)

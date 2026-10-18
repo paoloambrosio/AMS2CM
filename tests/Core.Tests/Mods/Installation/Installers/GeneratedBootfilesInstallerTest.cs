@@ -128,6 +128,35 @@ public class GeneratedBootfilesInstallerTest
         installer.PackageVersionHash.Should().Be(version);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void VersionUsesSavedMetadataWithoutChangingCreationTimes(bool updatedInPlace)
+    {
+        AddSources();
+        var originalVersion = NewInstaller().PackageVersionHash;
+        SimulateInstalledBootfiles(InstalledAt.AddMinutes(1));
+        var relative = Path.Combine(PakfilesDirectory, BootFlowPakFileName);
+        var previous = new PackageInstallationState(InstalledAt, originalVersion, false, [], [relative], [])
+        {
+            FileStates = new Dictionary<string, InstalledFileState>
+            {
+                [relative] = InstalledFileState.Capture(fs, new RootedPath("Game", relative))
+            }
+        };
+        if (updatedInPlace)
+        {
+            fs.File.WriteAllText(SourcePath(BootFlowPakFileName), "Updated game bootflow");
+            fs.File.SetLastWriteTimeUtc(SourcePath(BootFlowPakFileName), Stamp.AddMinutes(1));
+        }
+
+        var version = new GeneratedBootfilesInstaller(fs, "Generated", "Game", "Temp",
+            previousInstallation: previous).PackageVersionHash;
+
+        if (updatedInPlace) version.Should().NotBe(originalVersion);
+        else version.Should().Be(originalVersion);
+    }
+
     private GeneratedBootfilesInstaller NewInstaller(DateTimeOffset? previousInstallationTime = null) =>
         new(fs, "Generated", "Game", "Temp", previousInstallation: previousInstallationTime is { } installedAt
             ? new PackageInstallationState(installedAt, null, false, [],

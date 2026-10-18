@@ -3,17 +3,18 @@
 public sealed record RootedPath(string Root, string Relative = "")
 {
     public string Full { get; } = Path.Combine(Root, Relative);
+    private readonly string comparisonPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(Root, Relative)));
 
     public RootedPath SubPath(string subPath) =>
         new(Root, Path.Combine(Relative, subPath));
 
     /// <summary>
-    /// Compares full paths without case sensitivity or additional path normalization.
+    /// Compares absolute paths ignoring case, redundant separators, and dot segments.
     /// </summary>
     public bool Equals(RootedPath? other) =>
         other is not null &&
-        StringComparer.OrdinalIgnoreCase.Equals(Full, other.Full);
+        StringComparer.OrdinalIgnoreCase.Equals(comparisonPath, other.comparisonPath);
 
     public override int GetHashCode() =>
-        StringComparer.OrdinalIgnoreCase.GetHashCode(Full);
+        StringComparer.OrdinalIgnoreCase.GetHashCode(comparisonPath);
 }
