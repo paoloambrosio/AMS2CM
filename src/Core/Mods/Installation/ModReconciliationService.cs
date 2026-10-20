@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Core.Mods.Installation.Installers;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
@@ -10,8 +11,9 @@ namespace Core.Mods.Installation;
 public class ModReconciliationService<TEventHandler>(
     IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
     IBootfilesNaming bootfilesNaming,
-    IModInstallerFactory<TEventHandler> modInstallerFactory)
-    : PackageReconciliationService<TEventHandler>(backupStrategyProvider)
+    IModInstallerFactory<TEventHandler> modInstallerFactory,
+    IFileSystem fileSystem)
+    : PackageReconciliationService<TEventHandler>(backupStrategyProvider, fileSystem)
     where TEventHandler : PackageReconciliationService.IEventHandler
 {
     protected override IReadOnlyCollection<IReconciliationAction> ReconciliationActions(

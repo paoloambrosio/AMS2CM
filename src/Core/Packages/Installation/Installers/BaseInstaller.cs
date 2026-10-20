@@ -24,18 +24,13 @@ internal abstract class BaseInstaller<TPassthrough> : IPackageInstaller
 
     private readonly HashSet<RootedPath> installedFiles = new();
 
-    protected BaseInstaller(string packageName, int? packageVersionHash) :
-        this(new FileSystem(), TimeProvider.System, packageName, packageVersionHash, ImmutableHashSet<string>.Empty)
-    {
-    }
-
     // A package cannot currently specify dependencies.
-    protected BaseInstaller(IFileSystem fs, TimeProvider timeProvider, string packageName, int? packageVersionHash, IReadOnlySet<string> packageDependencies)
+    protected BaseInstaller(IFileSystem fs, TimeProvider timeProvider, PackageMetadata package)
     {
         FileSystem = fs;
-        PackageName = packageName;
-        PackageVersionHash = packageVersionHash;
-        PackageDependencies = packageDependencies;
+        PackageName = package.Name;
+        PackageVersionHash = package.VersionHash;
+        PackageDependencies = package.Dependencies;
         InstallTime = timeProvider.GetUtcNow();
     }
 

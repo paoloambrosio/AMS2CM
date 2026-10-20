@@ -1,5 +1,6 @@
 using System.IO.Abstractions.TestingHelpers;
 using Core.Mods.Installation.Installers;
+using Core.Mods.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Tests.Packages.Installation.Installers;
@@ -232,7 +233,9 @@ public class ModInstallerTest
 
     private ModInstaller InstallWithModInstaller(IPackageInstaller inner)
     {
-        var modInstaller = new ModInstaller(fs, inner, tempDir, configMock.Object, destDir, BootfilesPackageName);
+        var paths = new InstallationPaths(destDir, Path.Combine(destDir, "Mods"), tempDir);
+        var modInstaller = new ModInstaller(fs, new ContainedDirsRootFinder(configMock.Object.DirsAtRoot), inner,
+            new ModInstallerOptions(paths, configMock.Object, BootfilesPackageName));
         modInstaller.Install(packagePath => new RootedPath(destDir, packagePath),
             backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>
             {

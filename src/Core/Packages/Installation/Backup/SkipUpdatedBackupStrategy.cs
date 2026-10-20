@@ -12,15 +12,17 @@ internal class SkipUpdatedBackupStrategy : IBackupStrategy
         where TEventHandler : IBackupEventHandler
     {
         private readonly IBackupStrategyProvider<DateTimeOffset, TEventHandler> baseProvider;
+        private readonly IFileSystem fileSystem;
 
-        public Provider(IBackupStrategyProvider<DateTimeOffset, TEventHandler> baseProvider)
+        public Provider(IFileSystem fs, IBackupStrategyProvider<DateTimeOffset, TEventHandler> baseProvider)
         {
+            fileSystem = fs;
             this.baseProvider = baseProvider;
         }
 
         public IBackupStrategy BackupStrategy(DateTimeOffset backupTime, TEventHandler? eventHandler) {
             var baseStrategy = baseProvider.BackupStrategy(backupTime, eventHandler);
-            return new SkipUpdatedBackupStrategy(baseStrategy, backupTime, eventHandler);
+            return new SkipUpdatedBackupStrategy(fileSystem, baseStrategy, backupTime, eventHandler);
         }
     }
 
@@ -28,14 +30,6 @@ internal class SkipUpdatedBackupStrategy : IBackupStrategy
     private readonly IBackupStrategy inner;
     private readonly DateTimeOffset backupTime;
     private readonly IBackupEventHandler? eventHandler;
-
-    private SkipUpdatedBackupStrategy(
-        IBackupStrategy backupStrategy,
-        DateTimeOffset backupTime,
-        IBackupEventHandler? eventHandler) :
-        this(new FileSystem(), backupStrategy, backupTime, eventHandler)
-    {
-    }
 
     internal SkipUpdatedBackupStrategy(
         IFileSystem fs,

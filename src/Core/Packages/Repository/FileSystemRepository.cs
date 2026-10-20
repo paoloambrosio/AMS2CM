@@ -6,20 +6,20 @@ namespace Core.Packages.Repository;
 
 public class FileSystemRepository : IPackageRepository
 {
-    private class FilePackage(IFileInfo fileInfo) : IPackage
+    private class FilePackage(IFileInfo fileInfo, IPackageInstallerFactory installerFactory) : IPackage
     {
         public string Name { get; } = fileInfo.Name;
         public int? VersionHash { get; } = FileSystemHash.Hash32(fileInfo);
         public string Location { get; } = fileInfo.FullName;
-        public IPackageInstaller CreateInstaller() => new ArchiveInstaller(Name, VersionHash, Location);
+        public IPackageInstaller CreateInstaller() => installerFactory.CreateArchive(new PackageMetadata(Name, VersionHash), Location);
     }
 
-    private class DirectoryPackage(IDirectoryInfo directoryInfo) : IPackage
+    private class DirectoryPackage(IDirectoryInfo directoryInfo, IPackageInstallerFactory installerFactory) : IPackage
     {
         public string Name { get; } = $"{directoryInfo.Name}{directoryInfo.FileSystem.Path.DirectorySeparatorChar}";
         public int? VersionHash => null;
         public string Location { get; } = directoryInfo.FullName;
-        public IPackageInstaller CreateInstaller() => new DirectoryInstaller(Name, VersionHash, Location);
+        public IPackageInstaller CreateInstaller() => installerFactory.CreateDirectory(new PackageMetadata(Name, VersionHash), Location);
     }
 
     internal const string EnabledSubdir = "Enabled";
@@ -29,13 +29,12 @@ public class FileSystemRepository : IPackageRepository
     private readonly string disabledDirPath;
     private readonly IFileSystem fs;
 
-    internal FileSystemRepository(string repositoryDir) : this(new FileSystem(), repositoryDir)
-    {
-    }
+    private readonly IPackageInstallerFactory installerFactory;
 
-    internal FileSystemRepository(IFileSystem fs, string repositoryDir)
+    internal FileSystemRepository(IFileSystem fs, IPackageInstallerFactory installerFactory, string repositoryDir)
     {
         this.fs = fs;
+        this.installerFactory = installerFactory;
         enabledDirPath = fs.Path.Combine(repositoryDir, EnabledSubdir);
         disabledDirPath = fs.Path.Combine(repositoryDir, DisabledSubdir);
     }
@@ -89,8 +88,8 @@ public class FileSystemRepository : IPackageRepository
             return Array.Empty<IPackage>();
         }
 
-        return directoryInfo.GetFiles().Where(IsVisible).Select(IPackage (fi) => new FilePackage(fi))
-            .Concat(directoryInfo.GetDirectories().Where(IsVisible).Select(IPackage (di) => new DirectoryPackage(di)))
+        return directoryInfo.GetFiles().Where(IsVisible).Select(IPackage (fi) => new FilePackage(fi, installerFactory))
+            .Concat(directoryInfo.GetDirectories().Where(IsVisible).Select(IPackage (di) => new DirectoryPackage(di, installerFactory)))
             .ToList();
     }
 

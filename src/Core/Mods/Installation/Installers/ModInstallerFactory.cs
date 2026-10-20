@@ -1,33 +1,25 @@
-﻿using Core.Games;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Installers;
-using Core.Utils;
 
 namespace Core.Mods.Installation.Installers;
 
-public class ModInstallerFactory<TConfig> : IModInstallerFactory<BootfilesInstaller.IEventHandler>
+public class ModInstallerFactory<TConfig>(
+    IFileSystem fileSystem,
+    IRootFinder rootFinder,
+    TConfig config,
+    InstallationPaths paths,
+    IBootfilesSourceFactory bootfilesSourceFactory) : IModInstallerFactory<BootfilesInstaller.IEventHandler>
     where TConfig : ModInstaller.IConfig, BootfilesInstaller.IConfig
 {
-    private readonly IGame game;
-    private readonly ITempDir tempDir;
-    private readonly IBootfilesNaming bootfilesNaming;
-    private readonly TConfig config;
-
-    public ModInstallerFactory(IGame game,
-        ITempDir tempDir,
-        IBootfilesNaming bootfilesNaming,
-        TConfig config)
-    {
-        this.game = game;
-        this.tempDir = tempDir;
-        this.bootfilesNaming = bootfilesNaming;
-        this.config = config;
-    }
-
     public IPackageInstaller ModInstaller(IPackageInstaller packageInstaller, IPackageInstaller bootfilesInstaller) =>
-        new ModInstaller(packageInstaller, tempDir.BasePath, config, game.InstallationDirectory, bootfilesInstaller.PackageName);
+        new ModInstaller(fileSystem, rootFinder, packageInstaller,
+            new ModInstallerOptions(paths, config, bootfilesInstaller.PackageName));
 
     public IPackageInstaller BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
-        BootfilesInstaller.IEventHandler eventHandler) =>
-        new BootfilesInstaller(bootfilesPackageInstaller, tempDir.BasePath, config,
-            game.InstallationDirectory, bootfilesNaming, eventHandler);
+        BootfilesInstaller.IEventHandler eventHandler)
+    {
+        var source = bootfilesSourceFactory.Create(bootfilesPackageInstaller);
+        return new BootfilesInstaller(fileSystem, rootFinder, source.Installer,
+            new BootfilesInstallerOptions(paths, config, source.EventPackageName), eventHandler);
+    }
 }

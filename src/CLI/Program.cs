@@ -1,11 +1,19 @@
-﻿using AMS2CM.CLI;
+using AMS2CM.CLI;
+using Core;
 using Core.API;
+using Microsoft.Extensions.DependencyInjection;
 
 try
 {
     var config = Config.Load(args);
-    var modManager = Init.CreateModManager(config);
-    modManager.InstallEnabledMods(new ConsoleEventLogger());
+    var services = new ServiceCollection().AddCoreServices(config);
+    services.AddSingleton<ConsoleEventLogger>();
+    using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+    {
+        ValidateOnBuild = true,
+        ValidateScopes = true
+    });
+    provider.GetRequiredService<IModManager>().InstallEnabledMods(provider.GetRequiredService<ConsoleEventLogger>());
 }
 catch (Exception e)
 {

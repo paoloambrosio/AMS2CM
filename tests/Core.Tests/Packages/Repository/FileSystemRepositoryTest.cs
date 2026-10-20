@@ -14,7 +14,8 @@ public class FileSystemRepositoryTest
 
     public FileSystemRepositoryTest()
     {
-        fileSystemRepository = new FileSystemRepository(fs, RepositoryDir);
+        fileSystemRepository = new FileSystemRepository(fs,
+            new Core.Packages.Installation.Installers.PackageInstallerFactory(fs, TimeProvider.System), RepositoryDir);
     }
 
     [Fact]

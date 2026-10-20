@@ -20,7 +20,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
 
     protected override IReconciliationService<PackageReconciliationService.IEventHandler> NewService(
         IBackupStrategyProvider<DateTimeOffset, PackageReconciliationService.IEventHandler> backupStrategyProvider) =>
-        new PackageReconciliationService<PackageReconciliationService.IEventHandler>(backupStrategyProvider);
+        new PackageReconciliationService<PackageReconciliationService.IEventHandler>(backupStrategyProvider, TestFileSystem);
 
     #endregion
 
@@ -385,7 +385,7 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
     public void Apply_UninstallRemovesEmptyDirectories()
     {
         var subDir = Path.Combine("D1", "D2");
-        Directory.CreateDirectory(DestinationPath(subDir).Full);
+        TestFileSystem.Directory.CreateDirectory(DestinationPath(subDir).Full);
 
         InstallationState = new Dictionary<string, PackageInstallationState>
         {
@@ -399,7 +399,8 @@ public class PackageReconciliationServiceTest : ReconciliationServiceTestBase<Pa
 
         InstallationState.Should().BeEmpty();
 
-        Directory.Exists(DestinationPath("D1").Full).Should().BeFalse();
+        TestFileSystem.Directory.Exists(DestinationPath("D1").Full).Should().BeFalse();
+        TestFileSystem.Directory.Exists(DestinationPath("").Full).Should().BeTrue();
     }
 
     [Fact]
@@ -529,7 +530,7 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
 
     protected readonly DateTimeOffset TestInstallationTimeUtc;
     private readonly FakeTimeProvider TestTimeProvider;
-    private readonly MockFileSystem TestFileSystem = new();
+    protected readonly MockFileSystem TestFileSystem = new();
 
     protected IReadOnlyDictionary<string, PackageInstallationState>? InstallationState;
     protected IEnumerable<string> InstalledPackages =>

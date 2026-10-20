@@ -25,8 +25,8 @@ internal class JsonFileStatePersistence : IStatePersistence
         DateTimeZoneHandling = DateTimeZoneHandling.Utc
     };
 
-    public JsonFileStatePersistence(string modsPath) :
-        this(new FileSystem(), Path.Combine(modsPath, StateV2FileName), Path.Combine(modsPath, StateV1FileName))
+    public JsonFileStatePersistence(IFileSystem fileSystem, string modsPath) :
+        this(fileSystem, Path.Combine(modsPath, StateV2FileName), Path.Combine(modsPath, StateV1FileName))
     {
     }
 

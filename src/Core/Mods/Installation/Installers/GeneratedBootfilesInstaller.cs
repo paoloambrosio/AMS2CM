@@ -1,4 +1,5 @@
-﻿using Core.Packages.Installation.Installers;
+﻿using System.IO.Abstractions;
+using Core.Packages.Installation.Installers;
 using Core.Utils;
 using PCarsTools;
 using PCarsTools.Encryption;
@@ -16,15 +17,16 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     private readonly string BmtFilesWildcard =
         Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
 
-    public GeneratedBootfilesInstaller(string packageName, string gameInstallationDirectory, string tempDir) :
-        base(packageName, null)
+    public GeneratedBootfilesInstaller(IFileSystem fileSystem, TimeProvider timeProvider, PackageMetadata package,
+        InstallationPaths paths) :
+        base(fileSystem, timeProvider, package)
     {
-        pakPath = Path.Combine(gameInstallationDirectory, PakfilesDirectory);
-        var extractionPath = Path.Combine(tempDir, Guid.NewGuid().ToString());
-        Source = Directory.CreateDirectory(extractionPath);
+        pakPath = Path.Combine(paths.GameDirectory, PakfilesDirectory);
+        var extractionPath = Path.Combine(paths.TempDirectory, Guid.NewGuid().ToString());
+        Source = fileSystem.Directory.CreateDirectory(extractionPath);
     }
 
-    protected override DirectoryInfo Source { get; }
+    protected override IDirectoryInfo Source { get; }
 
     protected override void InstallAllFiles(InstallBody body)
     {
@@ -32,9 +34,9 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
         base.InstallAllFiles(body);
     }
 
-    protected override void InstallFile(RootedPath destinationPath, FileInfo fileInfo)
+    protected override void InstallFile(RootedPath destinationPath, IFileInfo fileInfo)
     {
-        File.Move(fileInfo.FullName, destinationPath.Full, overwrite: true);
+        FileSystem.File.Move(fileInfo.FullName, destinationPath.Full, overwrite: true);
     }
 
     #region Bootfiles Generation
@@ -44,7 +46,7 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
         ExtractPakFileFromGame(BootFlowPakFileName);
         ExtractPakFileFromGame(PhysicsPersistentPakFileName);
         CreateEmptyFile(ExtractedPakPath($"{PhysicsPersistentPakFileName}{BaseInstaller.RemoveFileSuffix}"));
-        File.Copy(Path.Combine(pakPath, BootSplashPakFileName), ExtractedPakPath(BootFlowPakFileName));
+        FileSystem.File.Copy(Path.Combine(pakPath, BootSplashPakFileName), ExtractedPakPath(BootFlowPakFileName));
         DeleteFromExtractedFiles(BmtFilesWildcard);
     }
 
@@ -62,21 +64,21 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     private void CreateEmptyFile(string path)
     {
         CreateParentDirectory(path);
-        File.Create(path).Close();
+        FileSystem.File.Create(path).Close();
     }
 
     private void CreateParentDirectory(string path)
     {
         var parent = Path.GetDirectoryName(path);
         if (parent is not null)
-            Directory.CreateDirectory(parent);
+            FileSystem.Directory.CreateDirectory(parent);
     }
 
     private void DeleteFromExtractedFiles(string wildcardRelative)
     {
-        foreach (var file in Directory.EnumerateFiles(Source.FullName, wildcardRelative))
+        foreach (var file in FileSystem.Directory.EnumerateFiles(Source.FullName, wildcardRelative))
         {
-            File.Delete(file);
+            FileSystem.File.Delete(file);
         }
     }
 

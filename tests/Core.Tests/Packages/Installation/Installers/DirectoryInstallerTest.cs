@@ -3,6 +3,7 @@ using Core.Packages.Installation.Installers;
 using Core.Tests.Base;
 using Core.Utils;
 using FluentAssertions;
+using System.IO.Abstractions;
 
 namespace Core.Tests.Packages.Installation.Installers;
 
@@ -32,7 +33,7 @@ public class DirectoryInstallerTest : AbstractFilesystemTest
         var destinationFile = destinationRoot.SubPath(fileName);
         CreateFile(destinationFile, "Old");
 
-        var installer = new DirectoryInstaller("Package", 1, sourceRoot.Full);
+        var installer = new DirectoryInstaller(new FileSystem(), TimeProvider.System, new PackageMetadata("Package", 1), sourceRoot.Full);
         CreateFile(sourceRoot.SubPath(fileName), "New");
 
         installer.Install(path => destinationRoot.SubPath(path),
@@ -47,7 +48,7 @@ public class DirectoryInstallerTest : AbstractFilesystemTest
         var destinationFile = destinationRoot.SubPath(fileName);
         CreateFile(destinationFile, "Old");
 
-        var installer = new DirectoryInstaller("Package", 1, sourceRoot.Full);
+        var installer = new DirectoryInstaller(new FileSystem(), TimeProvider.System, new PackageMetadata("Package", 1), sourceRoot.Full);
         CreateFile(sourceRoot.SubPath(fileName + BaseInstaller.RemoveFileSuffix));
 
         installer.Install(path => destinationRoot.SubPath(path),

@@ -1,13 +1,15 @@
-﻿using Core.API;
+﻿using Core;
+using Core.API;
 using Core.SoftwareUpdates;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
-using static Core.API.IModManager;
 
 namespace AMS2CM.GUI;
 
 public partial class App : Application
 {
     private MainWindow? window;
+    private ServiceProvider? serviceProvider;
 
     public App()
     {
@@ -28,23 +30,41 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         var config = Config.Load(Environment.GetCommandLineArgs());
-        var modManager = CreateModManager(config);
-        var updateChecker = new GitHubUpdateChecker(config.Updates);
-        window = new MainWindow(modManager, updateChecker);
-        window.Activate();
-    }
-
-    private static IModManager CreateModManager(Config config)
-    {
+        var services = new ServiceCollection().AddCoreServices(config);
+        services.AddSingleton(provider =>
+        {
+            IModManager modManager;
+            try
+            {
+                modManager = provider.GetRequiredService<IModManager>();
+            }
+            catch (Exception ex)
+            {
+                modManager = new ThrowingModManager(ex);
+            }
+            return new MainWindow(modManager, provider.GetRequiredService<IUpdateChecker>());
+        });
+        serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true
+        });
         try
         {
-            return Init.CreateModManager(config);
+            window = serviceProvider.GetRequiredService<MainWindow>();
+            window.Closed += HandleWindowClosed;
+            window.Activate();
         }
-        catch (Exception ex)
+        catch
         {
-            return new ThrowingModManager(ex);
+            DisposeServiceProvider();
+            throw;
         }
     }
+
+    private void HandleWindowClosed(object sender, WindowEventArgs args) => DisposeServiceProvider();
+
+    private void DisposeServiceProvider() => Interlocked.Exchange(ref serviceProvider, null)?.Dispose();
 
     private class ThrowingModManager : IModManager
     {

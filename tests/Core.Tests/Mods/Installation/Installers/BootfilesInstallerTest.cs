@@ -1,6 +1,7 @@
 using System.IO.Abstractions.TestingHelpers;
 using Core.Mods;
 using Core.Mods.Installation.Installers;
+using Core.Mods.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Tests.Packages.Installation.Installers;
@@ -184,8 +185,12 @@ public class BootfilesInstallerTest
             {
                 [FileInBootfilesPackage] = ""
             }, Array.Empty<string>());
-        var bootfilesInstaller = new BootfilesInstaller(fs, emptyPackage, tempDir, configMock.Object,
-            destDir, bootfilesNamingMock.Object, eventHandlerMock.Object);
+        var paths = new InstallationPaths(destDir, Path.Combine(destDir, "Mods"), tempDir);
+        var eventPackageName = bootfilesNamingMock.Object.IsGeneratedBootfiles(emptyPackage.PackageName)
+            ? emptyPackage.PackageName : null;
+        var bootfilesInstaller = new BootfilesInstaller(fs,
+            new ContainedDirsRootFinder(configMock.Object.DirsAtRoot), emptyPackage,
+            new BootfilesInstallerOptions(paths, configMock.Object, eventPackageName), eventHandlerMock.Object);
         bootfilesInstaller.Install(packagePath => new RootedPath(destDir, packagePath),
             backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>
             {

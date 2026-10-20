@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -22,9 +23,11 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
     public class Factory(
         string installDir,
         IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
-        TEventHandler eventHandler)
+        TEventHandler eventHandler,
+        IFileSystem fileSystem)
     {
         internal string InstallDir { get; } = installDir;
+        internal IFileSystem FileSystem { get; } = fileSystem;
         internal IBackupStrategyProvider<DateTimeOffset, TEventHandler> BackupStrategyProvider { get; } = backupStrategyProvider;
         internal TEventHandler EventHandler { get; } = eventHandler;
 
@@ -93,7 +96,7 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
             DeleteEmptyDirectories(filesToUninstall);
         }
 
-        private static void DeleteEmptyDirectories(IReadOnlyCollection<RootedPath> filePaths)
+        private void DeleteEmptyDirectories(IReadOnlyCollection<RootedPath> filePaths)
         {
             var dirs = filePaths
                 .SelectMany(file => AncestorsUpTo(file.Root, file.Full))
@@ -102,18 +105,19 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
             foreach (var dir in dirs)
             {
                 // Some packages have duplicate entries, so files might have been removed already
-                if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+                if (FileSystem.Directory.Exists(dir) && !FileSystem.Directory.EnumerateFileSystemEntries(dir).Any())
                 {
-                    Directory.Delete(dir);
+                    FileSystem.Directory.Delete(dir);
                 }
             }
         }
 
-        private static List<string> AncestorsUpTo(string root, string path)
+        private List<string> AncestorsUpTo(string root, string path)
         {
             var ancestors = new List<string>();
-            for (var dir = Directory.GetParent(path);
-                 dir is not null && dir.FullName != root;
+            var fullRoot = FileSystem.Path.TrimEndingDirectorySeparator(FileSystem.Path.GetFullPath(root));
+            for (var dir = FileSystem.Directory.GetParent(path);
+                 dir is not null && !string.Equals(dir.FullName, fullRoot, StringComparison.OrdinalIgnoreCase);
                  dir = dir.Parent)
             {
                 ancestors.Add(dir.FullName);
@@ -175,12 +179,14 @@ internal abstract class ReconciliationAction<TEventHandler> where TEventHandler 
         Factory factory)
     {
         InstallDir = factory.InstallDir;
+        FileSystem = factory.FileSystem;
         EventHandler = factory.EventHandler;
         BackupStrategy = factory.BackupStrategyProvider.BackupStrategy(installTime, EventHandler);
         InstallTime = installTime;
     }
 
     protected readonly string InstallDir;
+    protected readonly IFileSystem FileSystem;
     protected readonly TEventHandler EventHandler;
     protected readonly IBackupStrategy BackupStrategy;
 

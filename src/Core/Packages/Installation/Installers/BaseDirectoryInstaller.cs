@@ -1,32 +1,46 @@
-﻿namespace Core.Packages.Installation.Installers;
+﻿using System.IO.Abstractions;
 
-internal abstract class BaseDirectoryInstaller : BaseInstaller<FileInfo>
+namespace Core.Packages.Installation.Installers;
+
+internal abstract class BaseDirectoryInstaller : BaseInstaller<IFileInfo>
 {
-    private static readonly EnumerationOptions RecursiveEnumeration = new()
-    {
-        MatchType = MatchType.Win32,
-        IgnoreInaccessible = false,
-        AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
-        RecurseSubdirectories = true,
-    };
-
-    protected BaseDirectoryInstaller(string packageName, int? packageVersionHash) :
-        base(packageName, packageVersionHash)
+    protected BaseDirectoryInstaller(IFileSystem fileSystem, TimeProvider timeProvider, PackageMetadata package) :
+        base(fileSystem, timeProvider, package)
     {
     }
 
-    protected abstract DirectoryInfo Source { get; }
+    protected abstract IDirectoryInfo Source { get; }
 
     public override IEnumerable<string> RelativeDirectoryPaths =>
-        Source.EnumerateDirectories("*", RecursiveEnumeration)
+        VisibleDirectories().Skip(1)
             .Select(_ => Path.GetRelativePath(Source.FullName, _.FullName));
 
     protected override void InstallAllFiles(InstallBody body)
     {
-        foreach (var fileInfo in Source.EnumerateFiles("*", RecursiveEnumeration))
+        foreach (var directory in VisibleDirectories())
         {
-            var relativePath = Path.GetRelativePath(Source.FullName, fileInfo.FullName);
-            body(relativePath, fileInfo);
+            foreach (var fileInfo in directory.EnumerateFiles("*", SearchOption.TopDirectoryOnly).Where(IsVisible))
+            {
+                var relativePath = Path.GetRelativePath(Source.FullName, fileInfo.FullName);
+                body(relativePath, fileInfo);
+            }
         }
     }
+
+    private IEnumerable<IDirectoryInfo> VisibleDirectories()
+    {
+        var directories = new Queue<IDirectoryInfo>();
+        directories.Enqueue(Source);
+        while (directories.TryDequeue(out var directory))
+        {
+            yield return directory;
+            foreach (var child in directory.EnumerateDirectories("*", SearchOption.TopDirectoryOnly).Where(IsVisible))
+            {
+                directories.Enqueue(child);
+            }
+        }
+    }
+
+    private static bool IsVisible(IFileSystemInfo info) =>
+        (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0;
 }

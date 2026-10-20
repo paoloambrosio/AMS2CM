@@ -1,4 +1,5 @@
-﻿using Core.Utils;
+﻿using System.IO.Abstractions;
+using Core.Utils;
 using LibArchive.Net;
 
 namespace Core.Packages.Installation.Installers;
@@ -10,8 +11,9 @@ internal class ArchiveInstaller : BaseInstaller<Stream>
 
     private readonly string archivePath;
 
-    public ArchiveInstaller(string packageName, int? packageVersionHash,  string archivePath) :
-        base(packageName, packageVersionHash)
+    public ArchiveInstaller(IFileSystem fileSystem, TimeProvider timeProvider, PackageMetadata package,
+        string archivePath) :
+        base(fileSystem, timeProvider, package)
     {
         this.archivePath = archivePath;
     }
@@ -24,7 +26,8 @@ internal class ArchiveInstaller : BaseInstaller<Stream>
     {
         get
         {
-            using var reader = new LibArchiveReader(archivePath, BlockSize);
+            using var archiveStream = FileSystem.File.OpenRead(archivePath);
+            using var reader = new LibArchiveReader(archiveStream, blockSize: BlockSize);
             var ret = new HashSet<string>();
             foreach (var entry in reader.Entries())
             {
@@ -46,7 +49,8 @@ internal class ArchiveInstaller : BaseInstaller<Stream>
 
     protected override void InstallAllFiles(InstallBody body)
     {
-        using var reader = new LibArchiveReader(archivePath, BlockSize);
+        using var archiveStream = FileSystem.File.OpenRead(archivePath);
+        using var reader = new LibArchiveReader(archiveStream, blockSize: BlockSize);
         foreach (var entry in reader.Entries())
         {
             if (!entry.IsRegularFile)
@@ -66,8 +70,8 @@ internal class ArchiveInstaller : BaseInstaller<Stream>
             return;
         }
 
-        Directory.GetParent(destinationPath.Full)?.Create();
-        using var destinationStream = new FileStream(destinationPath.Full, FileMode.Create);
+        FileSystem.Directory.GetParent(destinationPath.Full)?.Create();
+        using var destinationStream = FileSystem.FileStream.New(destinationPath.Full, FileMode.Create);
         stream.CopyTo(destinationStream, CopyBufferSize);
     }
 }

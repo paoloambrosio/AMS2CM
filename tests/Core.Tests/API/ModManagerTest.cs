@@ -9,11 +9,13 @@ using Core.State;
 using Core.Tests.Base;
 using Core.Utils;
 using FluentAssertions;
+using System.IO.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Core.Tests.API;
 
 [IntegrationTest]
-public class ModManagerTest : AbstractFilesystemTest
+public class ModManagerTest : AbstractFilesystemTest, IDisposable
 {
     #region Setup
 
@@ -47,12 +49,13 @@ public class ModManagerTest : AbstractFilesystemTest
     private readonly InMemoryStatePersistence persistedState;
 
     private readonly IModManager modManager;
+    private readonly ServiceProvider serviceProvider;
 
     public ModManagerTest()
     {
         gameDir = TestDir.CreateSubdirectory("Game");
 
-        var tempDir = new SubdirectoryTempDir(TestDir.FullName);
+        var tempDir = new SubdirectoryTempDir(new FileSystem(), TestDir.FullName);
 
         persistedState = new InMemoryStatePersistence();
         var modInstallConfig = new ModInstallConfig
@@ -63,15 +66,26 @@ public class ModManagerTest : AbstractFilesystemTest
             GameSupportedModDir = GameSupportedModDirectory
         };
 
-        modManager = Init.CreateModManager(
-            gameMock.Object,
-            modRepositoryMock.Object,
-            persistedState,
-            safeFileDeleteMock.Object,
-            tempDir,
-            modInstallConfig);
-
         gameMock.Setup(m => m.InstallationDirectory).Returns(gameDir.FullName);
+        var services = new ServiceCollection();
+        services.AddSingleton(gameMock.Object);
+        services.AddSingleton(modRepositoryMock.Object);
+        services.AddSingleton<IStatePersistence>(persistedState);
+        services.AddSingleton(safeFileDeleteMock.Object);
+        services.AddSingleton<ITempDir>(tempDir);
+        services.AddCoreServices(new Config { ModInstall = modInstallConfig });
+        serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true
+        });
+        modManager = serviceProvider.GetRequiredService<IModManager>();
+    }
+
+    void IDisposable.Dispose()
+    {
+        serviceProvider.Dispose();
+        base.Dispose();
     }
 
     #endregion
@@ -960,7 +974,8 @@ public class ModManagerTest : AbstractFilesystemTest
         package.SetupGet(m => m.Location).Returns(modContentsDir);
         package.SetupGet(m => m.VersionHash).Returns(versionHash);
         package.Setup(m => m.CreateInstaller()).Returns(() =>
-            new DirectoryInstaller(packageName, versionHash, modContentsDir));
+            new DirectoryInstaller(new FileSystem(), TimeProvider.System,
+                new PackageMetadata(packageName, versionHash), modContentsDir));
         return package.Object;
     }
 

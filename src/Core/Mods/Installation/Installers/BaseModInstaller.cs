@@ -35,7 +35,8 @@ public abstract class BaseModInstaller : IPackageInstaller
 
     private readonly HashSet<RootedPath> localInstalledFiles = new();
 
-    protected BaseModInstaller(IFileSystem fileSystem, IPackageInstaller inner, string tempDir, IConfig config)
+    protected BaseModInstaller(IFileSystem fileSystem, IRootFinder rootFinder, IPackageInstaller inner, string tempDir,
+        IConfig config)
     {
         FileSystem = fileSystem;
         Inner = inner;
@@ -44,7 +45,6 @@ public abstract class BaseModInstaller : IPackageInstaller
         VehicleListFileName = config.VehicleListFileName;
         TrackListFileName = config.TrackListFileName;
         DrivelineFileName = config.DrivelineFileName;
-        var rootFinder = new ContainedDirsRootFinder(config.DirsAtRoot);
         rootPaths = new Lazy<IRootFinder.RootPaths>(
             () => rootFinder.FromDirectoryList(Inner.RelativeDirectoryPaths));
         filesToInstallMatcher = Matchers.ExcludingPatterns(config.ExcludedFromInstall);

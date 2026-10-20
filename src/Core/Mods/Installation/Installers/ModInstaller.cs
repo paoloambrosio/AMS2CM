@@ -27,19 +27,13 @@ public class ModInstaller : BaseModInstaller
     private RootedPath modConfigPath;
     private string modName;
 
-    internal ModInstaller(IPackageInstaller inner, string tempDir, IConfig config,
-        string gameInstallationDir, string bootfilesPackageName) :
-        this(new FileSystem(), inner, tempDir, config, gameInstallationDir, bootfilesPackageName)
+    internal ModInstaller(IFileSystem fileSystem, IRootFinder rootFinder, IPackageInstaller inner,
+        ModInstallerOptions options) :
+        base(fileSystem, rootFinder, inner, options.Paths.TempDirectory, options.Config)
     {
-    }
-
-    internal ModInstaller(IFileSystem fileSystem, IPackageInstaller inner, string tempDir, IConfig config,
-        string gameInstallationDir, string bootfilesPackageName) :
-        base(fileSystem, inner, tempDir, config)
-    {
-        this.bootfilesPackageName = bootfilesPackageName;
-        filesToConfigureMatcher = Matchers.ExcludingPatterns(config.ExcludedFromConfig);
-        generateModDetails = config.GenerateModDetails;
+        bootfilesPackageName = options.BootfilesPackageName;
+        filesToConfigureMatcher = Matchers.ExcludingPatterns(options.Config.ExcludedFromConfig);
+        generateModDetails = options.Config.GenerateModDetails;
 
         var normalisedName = string.Concat(
             Path.GetFileNameWithoutExtension(inner.PackageName)
@@ -47,7 +41,7 @@ public class ModInstaller : BaseModInstaller
         var hexVersionHash = (inner.PackageVersionHash ?? 0).ToString("x");
         modName = $"{normalisedName}_{hexVersionHash}";
 
-        modConfigPath = new RootedPath(gameInstallationDir, Path.Combine(GameSupportedModRelativeDir, modName));
+        modConfigPath = new RootedPath(options.Paths.GameDirectory, Path.Combine(GameSupportedModRelativeDir, modName));
     }
 
     public override IReadOnlySet<string> PackageDependencies =>

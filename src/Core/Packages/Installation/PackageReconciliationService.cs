@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -6,7 +7,8 @@ using Core.Utils;
 namespace Core.Packages.Installation;
 
 public class PackageReconciliationService<TEventHandler>(
-    IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider)
+    IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
+    IFileSystem fileSystem)
     : IReconciliationService<TEventHandler>
     where TEventHandler : PackageReconciliationService.IEventHandler
 {
@@ -72,7 +74,7 @@ public class PackageReconciliationService<TEventHandler>(
             .SelectMany(state => state.Files).Select(path => new RootedPath(installDir, path));
         var trackingBackupProvider = new SkipInstalledBackupStrategy.Provider<TEventHandler>(
             backupStrategyProvider, previouslyInstalledPaths);
-        var raf = new ReconciliationAction<TEventHandler>.Factory(installDir, trackingBackupProvider, eventHandler);
+        var raf = new ReconciliationAction<TEventHandler>.Factory(installDir, trackingBackupProvider, eventHandler, fileSystem);
         foreach (var (packageName, (state, installer)) in joinedState)
         {
             processed.Add(packageName);

@@ -27,33 +27,20 @@ public class BootfilesInstaller : BaseModInstaller
     }
 
     private readonly RootedPath gameInstallationPath;
-    private readonly IBootfilesNaming bootfilesNaming;
+    private readonly string? eventPackageName;
     private readonly IEventHandler eventHandler;
 
-    public BootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller, string tempDir, IConfig config,
-        string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
-        this(new FileSystem(), bootfilesPackageInstaller, tempDir, config,
-            gameInstallationDir, bootfilesNaming, eventHandler)
+    public BootfilesInstaller(IFileSystem fileSystem, IRootFinder rootFinder,
+        IPackageInstaller bootfilesPackageInstaller, BootfilesInstallerOptions options, IEventHandler eventHandler) :
+        base(fileSystem, rootFinder, bootfilesPackageInstaller, options.Paths.TempDirectory, options.Config)
     {
-    }
-
-    public BootfilesInstaller(IFileSystem fileSystem, IPackageInstaller? bootfilesPackageInstaller, string tempDir,
-        IConfig config, string gameInstallationDir, IBootfilesNaming bootfilesNaming, IEventHandler eventHandler) :
-        base(fileSystem, PackageOrGenerated(bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming),
-            tempDir, config)
-    {
-        gameInstallationPath = new RootedPath(gameInstallationDir);
-        VehicleListDir = gameInstallationPath.SubPath(config.BootfilesVehicleListDir);
-        TrackListDir = gameInstallationPath.SubPath(config.BootfilesTrackListDir);
-        DrivelineDir = gameInstallationPath.SubPath(config.BootfilesDrivelineDir);
-        this.bootfilesNaming = bootfilesNaming;
+        gameInstallationPath = new RootedPath(options.Paths.GameDirectory);
+        VehicleListDir = gameInstallationPath.SubPath(options.Config.BootfilesVehicleListDir);
+        TrackListDir = gameInstallationPath.SubPath(options.Config.BootfilesTrackListDir);
+        DrivelineDir = gameInstallationPath.SubPath(options.Config.BootfilesDrivelineDir);
+        eventPackageName = options.EventPackageName;
         this.eventHandler = eventHandler;
     }
-
-    private static IPackageInstaller PackageOrGenerated(IPackageInstaller? bootfilesPackageInstaller,
-        string gameInstallationDirectory, string tempDir, IBootfilesNaming bootfilesNaming) =>
-        bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(bootfilesNaming.GeneratedBootfilesName,
-            gameInstallationDirectory, tempDir);
 
     // Force bootfiles to be uninstalled every time
     public override int? PackageVersionHash => null;
@@ -72,8 +59,7 @@ public class BootfilesInstaller : BaseModInstaller
         }
 
         eventHandler.PostProcessingStart();
-        var packageNameIfNotGenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? PackageName : null;
-        eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
+        eventHandler.ExtractingBootfiles(eventPackageName);
 
         innerInstall();
 
