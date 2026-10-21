@@ -11,17 +11,17 @@ public class MoveFileBackupStrategyTest
     private const string OriginalFile = "original";
     private const string OriginalContents = "something";
 
-    private static readonly RootedPath OriginalPath = new("", OriginalFile);
+    private static readonly RootedPath OriginalPath = new(new MockFileSystem().DirectoryInfo.New(@"C:\"), OriginalFile);
 
     private readonly Mock<MoveFileBackupStrategy.IBackupFileNaming> backupFileNamingMock = new();
     private readonly Mock<IBackupEventHandler> eventHandlerMock = new();
 
     private MoveFileBackupStrategy.IBackupFileNaming BackupFileNaming => backupFileNamingMock.Object;
-    private string BackupFile => BackupFileNaming.ToBackup(OriginalFile);
+    private string BackupFile => BackupFileNaming.ToBackup(OriginalPath.Full);
 
     public MoveFileBackupStrategyTest()
     {
-        backupFileNamingMock.Setup(_ => _.ToBackup(It.IsAny<string>())).Returns<string>(_ => $"b{_}");
+        backupFileNamingMock.Setup(_ => _.ToBackup(It.IsAny<string>())).Returns<string>(_ => $"{_}.backup");
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class MoveFileBackupStrategyTest
     public void PerformBackup_ErrorsIfNameIsBackupName()
     {
         var fs = new MockFileSystem();
-        backupFileNamingMock.Setup(_ => _.IsBackup(OriginalFile)).Returns(true);
+        backupFileNamingMock.Setup(_ => _.IsBackup(OriginalPath.Full)).Returns(true);
         var mfbs = new MoveFileBackupStrategy(fs.File, BackupFileNaming, eventHandlerMock.Object);
 
         mfbs.Invoking(_ => _.PerformBackup(OriginalPath))

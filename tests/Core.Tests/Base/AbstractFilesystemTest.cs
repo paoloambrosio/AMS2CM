@@ -1,4 +1,4 @@
-﻿using Core.Utils;
+using Core.Utils;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 
@@ -30,11 +30,11 @@ public abstract class AbstractFilesystemTest : IDisposable
     protected IFileInfo CreateTestFile(string relativePath, string content = "") =>
         CreateFile(TestPath(relativePath), content);
 
-    protected RootedPath TestPath(string relativePath) => new(TestDir.FullName, relativePath);
+    protected RootedPath TestPath(string relativePath) => new(TestDir, relativePath);
 
     protected IFileInfo CreateFile(RootedPath path, string content = "")
     {
-        var parentDirFullPath = Path.GetDirectoryName(path.Full);
+        var parentDirFullPath = FileSystem.Path.GetDirectoryName(path.Full);
         if (parentDirFullPath is not null)
         {
             FileSystem.Directory.CreateDirectory(parentDirFullPath);

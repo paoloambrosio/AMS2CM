@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -71,7 +71,7 @@ public class PackageReconciliationService<TEventHandler>(
         var toUninstall = new HashSet<string>();
         var processed = new HashSet<string>();
         var previouslyInstalledPaths = previousState.Values
-            .SelectMany(state => state.Files).Select(path => new RootedPath(installDir.FullName, path));
+            .SelectMany(state => state.Files).Select(path => new RootedPath(installDir, path));
         var trackingBackupProvider = new SkipInstalledBackupStrategy.Provider<TEventHandler>(
             backupStrategyProvider, previouslyInstalledPaths);
         var raf = new ReconciliationAction<TEventHandler>.Factory(installDir, trackingBackupProvider, eventHandler);

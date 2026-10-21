@@ -39,7 +39,7 @@ internal class ArchiveInstaller : BaseInstaller<Stream>
                     continue;
                 }
 
-                var normalizedPath = Path.GetDirectoryName(entry.Name);
+                var normalizedPath = FileSystem.Path.GetDirectoryName(entry.Name);
                 if (normalizedPath is not null)
                 {
                     ret.Add(normalizedPath);
@@ -61,7 +61,7 @@ internal class ArchiveInstaller : BaseInstaller<Stream>
                 continue;
             }
 
-            var normalizedPath = Paths.NormalizeDirectorySeparators(entry.Name);
+            var normalizedPath = Paths.NormalizeDirectorySeparators(FileSystem.Path, entry.Name);
             using var entryStream = entry.Stream;
             body(normalizedPath, entryStream);
         }

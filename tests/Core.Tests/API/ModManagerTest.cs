@@ -21,18 +21,18 @@ public class ModManagerTest : AbstractFilesystemTest
     private const string BootfilesPrefix = "BP";
     private const string DirAtRoot = "DirAtRoot";
     private const string FileExcludedFromInstall = "Excluded";
-    private static readonly string GameSupportedModDirectory = Path.Combine("Mod", "Directory");
+    private string GameSupportedModDirectory => FileSystem.Path.Combine("Mod", "Directory");
 
     private static readonly ModInstallConfig DefaultModInstallConfig = new();
 
-    private static readonly string VehicleListRelativePath =
-        Path.Combine(DefaultModInstallConfig.BootfilesVehicleListDir, DefaultModInstallConfig.VehicleListFileName);
+    private string VehicleListRelativePath => FileSystem.Path.Combine(DefaultModInstallConfig.BootfilesVehicleListDir,
+        DefaultModInstallConfig.VehicleListFileName);
 
-    private static readonly string TrackListRelativePath =
-        Path.Combine(DefaultModInstallConfig.BootfilesTrackListDir, DefaultModInstallConfig.TrackListFileName);
+    private string TrackListRelativePath => FileSystem.Path.Combine(DefaultModInstallConfig.BootfilesTrackListDir,
+        DefaultModInstallConfig.TrackListFileName);
 
-    private static readonly string DrivelineRelativePath =
-        Path.Combine(DefaultModInstallConfig.BootfilesDrivelineDir, DefaultModInstallConfig.DrivelineFileName);
+    private string DrivelineRelativePath => FileSystem.Path.Combine(DefaultModInstallConfig.BootfilesDrivelineDir,
+        DefaultModInstallConfig.DrivelineFileName);
 
     private static readonly DateTimeOffset PastDate = DateTimeOffset.Now.AddDays(-1);
 
@@ -268,8 +268,8 @@ public class ModManagerTest : AbstractFilesystemTest
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine("X", "ModAFile"),
-                    Path.Combine("Y", "ModAFile")
+                    FileSystem.Path.Combine("X", "ModAFile"),
+                    FileSystem.Path.Combine("Y", "ModAFile")
                 ],
                 ShadowedBy: []),
             ["B"] = new(
@@ -277,7 +277,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine("X", "ModBFile")
+                    FileSystem.Path.Combine("X", "ModBFile")
                 ],
                 ShadowedBy: [])
         });
@@ -454,11 +454,11 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine("Foo", DirAtRoot, "A"),
-                Path.Combine("Bar", DirAtRoot, "B"),
-                Path.Combine("Bar", "C"),
-                Path.Combine("Baz", "D"),
-                Path.Combine("E")
+                FileSystem.Path.Combine("Foo", DirAtRoot, "A"),
+                FileSystem.Path.Combine("Bar", DirAtRoot, "B"),
+                FileSystem.Path.Combine("Bar", "C"),
+                FileSystem.Path.Combine("Baz", "D"),
+                FileSystem.Path.Combine("E")
             ])
         ]);
 
@@ -477,8 +477,8 @@ public class ModManagerTest : AbstractFilesystemTest
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine(DirAtRoot, "A"),
-                    Path.Combine(DirAtRoot, "B"),
+                    FileSystem.Path.Combine(DirAtRoot, "A"),
+                    FileSystem.Path.Combine(DirAtRoot, "B"),
                     "C"
                 ],
                 ShadowedBy: []),
@@ -490,8 +490,8 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine("A", FileExcludedFromInstall),
-                Path.Combine(DirAtRoot, "B"),
+                FileSystem.Path.Combine("A", FileExcludedFromInstall),
+                FileSystem.Path.Combine(DirAtRoot, "B"),
             ])
         ]);
 
@@ -506,7 +506,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine(DirAtRoot, "B")
+                    FileSystem.Path.Combine(DirAtRoot, "B")
                 ],
                 ShadowedBy: []),
         });
@@ -515,7 +515,7 @@ public class ModManagerTest : AbstractFilesystemTest
     [Fact]
     public void Install_DeletesFilesWithSuffix()
     {
-        var modFile = Path.Combine(DirAtRoot, "A");
+        var modFile = FileSystem.Path.Combine(DirAtRoot, "A");
 
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [DeletionName(modFile)]),
@@ -533,11 +533,11 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine(DirAtRoot, "A"),
-                Path.Combine(DirAtRoot, "B")
+                FileSystem.Path.Combine(DirAtRoot, "A"),
+                FileSystem.Path.Combine(DirAtRoot, "B")
             ]),
             CreateModPackage(102, [
-                Path.Combine("X", DirAtRoot, "a")
+                FileSystem.Path.Combine("X", DirAtRoot, "a")
             ]),
         ]);
 
@@ -550,14 +550,14 @@ public class ModManagerTest : AbstractFilesystemTest
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine(DirAtRoot, "B")
+                    FileSystem.Path.Combine(DirAtRoot, "B")
                 ],
                 ShadowedBy: ["Package102"]),
             ["Package102"] = new(Time: DateTimeOffset.UtcNow, VersionHash: 102, Partial: false,
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine(DirAtRoot, "a")
+                    FileSystem.Path.Combine(DirAtRoot, "a")
                 ],
                 ShadowedBy: []),
         });
@@ -568,8 +568,8 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine("X", DirAtRoot, "A"),
-                Path.Combine("Y", DirAtRoot, "a")
+                FileSystem.Path.Combine("X", DirAtRoot, "A"),
+                FileSystem.Path.Combine("Y", DirAtRoot, "a")
             ])
         ]);
 
@@ -581,7 +581,7 @@ public class ModManagerTest : AbstractFilesystemTest
                 Dependencies: [],
                 Files:
                 [
-                    Path.Combine(DirAtRoot, "A")
+                    FileSystem.Path.Combine(DirAtRoot, "A")
                 ],
                 ShadowedBy: []),
         });
@@ -592,15 +592,15 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine(DirAtRoot, "A")
+                FileSystem.Path.Combine(DirAtRoot, "A")
             ]),
             CreateModPackage(102, [
-                Path.Combine(DirAtRoot, "B1"),
-                Path.Combine(DirAtRoot, "B2"),
-                Path.Combine(DirAtRoot, "B3")
+                FileSystem.Path.Combine(DirAtRoot, "B1"),
+                FileSystem.Path.Combine(DirAtRoot, "B2"),
+                FileSystem.Path.Combine(DirAtRoot, "B3")
             ]),
             CreateModPackage(103, [
-                Path.Combine(DirAtRoot, "C"),
+                FileSystem.Path.Combine(DirAtRoot, "C"),
             ]),
         ]);
         CreateFile(GamePath(DirAtRoot, "B2"));
@@ -621,8 +621,8 @@ public class ModManagerTest : AbstractFilesystemTest
                     Dependencies: [],
                     Files:
                     [
-                        Path.Combine(DirAtRoot, "B1"),
-                        Path.Combine(DirAtRoot, "B2") // We don't know when it failed
+                        FileSystem.Path.Combine(DirAtRoot, "B1"),
+                        FileSystem.Path.Combine(DirAtRoot, "B2") // We don't know when it failed
                     ],
                     ShadowedBy: []),
                 ["Package103"] = new(
@@ -630,7 +630,7 @@ public class ModManagerTest : AbstractFilesystemTest
                     Dependencies: [],
                     Files:
                     [
-                        Path.Combine(DirAtRoot, "C")
+                        FileSystem.Path.Combine(DirAtRoot, "C")
                     ],
                     ShadowedBy: []),
             }
@@ -641,7 +641,7 @@ public class ModManagerTest : AbstractFilesystemTest
     public void Install_TwiceRestoresGeneratedModFiles()
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
-            CreateModPackage(101, [Path.Combine(DirAtRoot, "A")])
+            CreateModPackage(101, [FileSystem.Path.Combine(DirAtRoot, "A")])
         ]);
 
         modManager.InstallEnabledMods(eventHandlerMock.Object);
@@ -657,9 +657,10 @@ public class ModManagerTest : AbstractFilesystemTest
         var future = now.AddMinutes(1);
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                    Path.Combine(DirAtRoot, "A")
+                    FileSystem.Path.Combine(DirAtRoot, "A")
                 ], extractedDir =>
-                    FileSystem.File.SetCreationTime(Path.Combine(extractedDir, DirAtRoot, "A"), future.LocalDateTime)
+                    FileSystem.File.SetCreationTime(FileSystem.Path.Combine(extractedDir, DirAtRoot, "A"),
+                        future.LocalDateTime)
             )
         ]);
 
@@ -672,7 +673,7 @@ public class ModManagerTest : AbstractFilesystemTest
     [Fact]
     public void Install_PerformsBackups()
     {
-        var modFile = Path.Combine(DirAtRoot, "A");
+        var modFile = FileSystem.Path.Combine(DirAtRoot, "A");
         var toBeDeleted = "B";
 
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
@@ -690,7 +691,7 @@ public class ModManagerTest : AbstractFilesystemTest
     [Fact]
     public void Install_DoesNotBackUpFilesFromPreviouslyInstalledMods()
     {
-        var sharedFile = Path.Combine(DirAtRoot, "Shared");
+        var sharedFile = FileSystem.Path.Combine(DirAtRoot, "Shared");
         var modA = CreateModPackage(101, [sharedFile]);
         var modB = CreateModPackage(102, [sharedFile]);
 
@@ -717,7 +718,7 @@ public class ModManagerTest : AbstractFilesystemTest
     [Fact]
     public void Install_ShadowingPreservesOriginalBackupThroughUninstall()
     {
-        var sharedFile = Path.Combine(DirAtRoot, "Shared");
+        var sharedFile = FileSystem.Path.Combine(DirAtRoot, "Shared");
         var modA = CreateModPackage(101, [sharedFile]);
         var modB = CreateModPackage(102, [sharedFile]);
 
@@ -741,7 +742,7 @@ public class ModManagerTest : AbstractFilesystemTest
     [Fact]
     public void Install_DeletingModAddedFileDoesNotBackUpOrRestoreIt()
     {
-        var sharedFile = Path.Combine(DirAtRoot, "Shared");
+        var sharedFile = FileSystem.Path.Combine(DirAtRoot, "Shared");
         var modA = CreateModPackage(101, [DeletionName(sharedFile)]);
         var modB = CreateModPackage(102, [sharedFile]);
 
@@ -764,7 +765,7 @@ public class ModManagerTest : AbstractFilesystemTest
     [Fact]
     public void Install_BacksUpRestoredOriginalWhenReplacingRemovedPackage()
     {
-        var sharedFile = Path.Combine(DirAtRoot, "Shared");
+        var sharedFile = FileSystem.Path.Combine(DirAtRoot, "Shared");
         var modA = CreateModPackage(101, [sharedFile]);
         var modB = CreateModPackage(102, [sharedFile]);
 
@@ -794,9 +795,9 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine(DirAtRoot, "Vehicle.crd"),
-                Path.Combine(DirAtRoot, "Track.trd"), // Tracks do not currently work in game
-                Path.Combine(GameSupportedModDirectory, "Anything")
+                FileSystem.Path.Combine(DirAtRoot, "Vehicle.crd"),
+                FileSystem.Path.Combine(DirAtRoot, "Track.trd"), // Tracks do not currently work in game
+                FileSystem.Path.Combine(GameSupportedModDirectory, "Anything")
             ]),
             CreateCustomBootfiles(900),
         ]);
@@ -813,9 +814,9 @@ public class ModManagerTest : AbstractFilesystemTest
         var drivelineRecord = $"RECORD foo";
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                    Path.Combine("Foo", DirAtRoot, "Vehicle.crd")
+                    FileSystem.Path.Combine("Foo", DirAtRoot, "Vehicle.crd")
                 ], extractedDir =>
-                    FileSystem.File.WriteAllText(Path.Combine(extractedDir, "README.txt"), drivelineRecord)
+                    FileSystem.File.WriteAllText(FileSystem.Path.Combine(extractedDir, "README.txt"), drivelineRecord)
             ),
             CreateCustomBootfiles(900),
         ]);
@@ -839,9 +840,9 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine(DirAtRoot, "Track.trd"),
+                FileSystem.Path.Combine(DirAtRoot, "Track.trd"),
                 // Vehicles are not upgraded to game-supported mods if tracks are present
-                Path.Combine(DirAtRoot, "Vehicle.crd")
+                FileSystem.Path.Combine(DirAtRoot, "Vehicle.crd")
             ]),
             CreateCustomBootfiles(900),
         ]);
@@ -865,7 +866,7 @@ public class ModManagerTest : AbstractFilesystemTest
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
             CreateModPackage(101, [
-                Path.Combine(DirAtRoot, "Track.trd")
+                FileSystem.Path.Combine(DirAtRoot, "Track.trd")
             ]),
             CreateCustomBootfiles(900),
         ]);
@@ -887,7 +888,7 @@ public class ModManagerTest : AbstractFilesystemTest
     public void Install_ExtractsBootfilesFromGameByDefault()
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
-            CreateModPackage(101, [Path.Combine(DirAtRoot, "Foo.trd")])
+            CreateModPackage(101, [FileSystem.Path.Combine(DirAtRoot, "Foo.trd")])
         ]);
 
         // Unfortunately, there is no easy way to create pak files!
@@ -905,7 +906,7 @@ public class ModManagerTest : AbstractFilesystemTest
     public void Install_ChoosesLastOfMultipleCustomBootfiles()
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
-            CreateModPackage(101, [Path.Combine(DirAtRoot, "Foo.trd")]),
+            CreateModPackage(101, [FileSystem.Path.Combine(DirAtRoot, "Foo.trd")]),
             CreateCustomBootfiles(900),
             CreateCustomBootfiles(901)
         ]);
@@ -934,13 +935,13 @@ public class ModManagerTest : AbstractFilesystemTest
 
     private IPackage CreateCustomBootfiles(int versionHash) =>
         CreateModPackage(BootfilesPrefix, versionHash, [
-                Path.Combine(DirAtRoot, "OrTheyWontBeInstalled"),
+                FileSystem.Path.Combine(DirAtRoot, "OrTheyWontBeInstalled"),
                 VehicleListRelativePath,
                 TrackListRelativePath,
                 DrivelineRelativePath,
             ], extractedDir =>
                 FileSystem.File.AppendAllText(
-                    Path.Combine(extractedDir, DrivelineRelativePath),
+                    FileSystem.Path.Combine(extractedDir, DrivelineRelativePath),
                     $"{Environment.NewLine}END")
         );
 
@@ -951,7 +952,7 @@ public class ModManagerTest : AbstractFilesystemTest
         var modContentsDir = TestDir.CreateSubdirectory(modName).FullName;
         foreach (var relativePath in relativePaths)
         {
-            CreateFile(new RootedPath(modContentsDir, relativePath), $"{versionHash}");
+            CreateFile(new RootedPath(FileSystem.DirectoryInfo.New(modContentsDir), relativePath), $"{versionHash}");
         }
 
         callback(modContentsDir);
@@ -978,7 +979,7 @@ public class ModManagerTest : AbstractFilesystemTest
         $"{relativePath}{BaseInstaller.RemoveFileSuffix}";
 
     private RootedPath GamePath(params string[] segments) =>
-        new(gameDir.FullName, Path.Combine(segments));
+        new(gameDir, FileSystem.Path.Combine(segments));
 
     private class InMemoryStatePersistence : IStatePersistence
     {

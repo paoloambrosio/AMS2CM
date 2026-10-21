@@ -39,13 +39,13 @@ public abstract class BaseModInstaller : IPackageInstaller
     {
         FileSystem = tempDir.FileSystem;
         Inner = inner;
-        StagingFullPath = FileSystem.Path.GetFullPath(Path.Combine(tempDir.FullName, inner.PackageName));
-        GameSupportedModRelativeDir = Paths.NormalizeDirectorySeparators(config.GameSupportedModDir) +
-                                      Path.DirectorySeparatorChar;
+        StagingFullPath = new RootedPath(tempDir, inner.PackageName).Full;
+        GameSupportedModRelativeDir = Paths.NormalizeDirectorySeparators(FileSystem.Path, config.GameSupportedModDir) +
+                                      FileSystem.Path.DirectorySeparatorChar;
         VehicleListFileName = config.VehicleListFileName;
         TrackListFileName = config.TrackListFileName;
         DrivelineFileName = config.DrivelineFileName;
-        var rootFinder = new ContainedDirsRootFinder(config.DirsAtRoot);
+        var rootFinder = new ContainedDirsRootFinder(FileSystem.Path, config.DirsAtRoot);
         rootPaths = new Lazy<IRootFinder.RootPaths>(() => rootFinder.FromDirectoryList(Inner.RelativeDirectoryPaths));
         filesToInstallMatcher = Matchers.ExcludingPatterns(config.ExcludedFromInstall);
         postProcessingDone = false;
@@ -93,7 +93,7 @@ public abstract class BaseModInstaller : IPackageInstaller
         {
             var relativePathFromRoot = rootPaths.Value.GetPathFromRoot(pathInPackage);
             return relativePathFromRoot is null
-                ? new RootedPath(StagingFullPath, pathInPackage)
+                ? new RootedPath(FileSystem.DirectoryInfo.New(StagingFullPath), pathInPackage)
                 // If part of a game root, return the destination relative to that root
                 : destination(relativePathFromRoot);
         };
@@ -235,7 +235,7 @@ public abstract class BaseModInstaller : IPackageInstaller
 
         (InstalledFiles.Contains(filePath) ? new ProcessingCallbacks<RootedPath>() : callbacks).Wrap(() =>
         {
-            var dirPath = Path.GetDirectoryName(fullFilePath);
+            var dirPath = FileSystem.Path.GetDirectoryName(fullFilePath);
             if (dirPath is not null)
             {
                 FileSystem.Directory.CreateDirectory(dirPath);

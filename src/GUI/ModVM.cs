@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.IO.Abstractions;
 using Core;
 using Core.API;
 
@@ -7,6 +8,7 @@ namespace AMS2CM.GUI;
 internal class ModVM : INotifyPropertyChanged
 {
     private readonly ModState modState;
+    private readonly IPath path;
     private readonly IModManager modManager;
     private bool isEnabled;
     private readonly bool isOutOfDate;
@@ -14,8 +16,9 @@ internal class ModVM : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ModVM(ModState modState, IModManager modManager)
+    public ModVM(IPath path, ModState modState, IModManager modManager)
     {
+        this.path = path;
         this.modState = modState;
         this.modManager = modManager;
         isEnabled = modState.IsEnabled;
@@ -24,9 +27,9 @@ internal class ModVM : INotifyPropertyChanged
     }
 
     public string DisplayName =>
-        Path.EndsInDirectorySeparator(modState.PackageName)
-        ? Path.TrimEndingDirectorySeparator(modState.PackageName)
-        : Path.GetFileNameWithoutExtension(modState.PackageName);
+        path.EndsInDirectorySeparator(modState.PackageName)
+            ? path.TrimEndingDirectorySeparator(modState.PackageName)
+            : path.GetFileNameWithoutExtension(modState.PackageName);
 
     public string PackageName => modState.PackageName;
 
@@ -63,6 +66,7 @@ internal class ModVM : INotifyPropertyChanged
         {
             packageLocation = modManager.DisableMod(packageLocation);
         }
+
         isEnabled = shouldEnable;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEnabled)));
     }

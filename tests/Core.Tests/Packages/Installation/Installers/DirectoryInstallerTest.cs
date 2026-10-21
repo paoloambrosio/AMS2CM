@@ -19,8 +19,8 @@ public class DirectoryInstallerTest : AbstractFilesystemTest
 
     public DirectoryInstallerTest()
     {
-        sourceRoot = new RootedPath(TestDir.CreateSubdirectory("PackageDir").FullName);
-        destinationRoot = new RootedPath(TestDir.CreateSubdirectory("Destination").FullName);
+        sourceRoot = new RootedPath(TestDir.CreateSubdirectory("PackageDir"));
+        destinationRoot = new RootedPath(TestDir.CreateSubdirectory("Destination"));
     }
 
     #endregion

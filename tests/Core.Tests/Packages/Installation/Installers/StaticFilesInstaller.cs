@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -10,7 +10,8 @@ internal class StaticFilesInstaller : BaseInstaller<string>
     private readonly IReadOnlyDictionary<string, string> files;
     private readonly bool createFiles;
 
-    internal StaticFilesInstaller(IFileSystem fs, TimeProvider timeProvider, string packageName, int? packageVersionHash, IReadOnlyDictionary<string, string> files,
+    internal StaticFilesInstaller(IFileSystem fs, TimeProvider timeProvider, string packageName,
+        int? packageVersionHash, IReadOnlyDictionary<string, string> files,
         IReadOnlyCollection<string> packageDependencies) :
         base(fs, timeProvider, packageName, packageVersionHash, packageDependencies.ToImmutableHashSet())
     {
@@ -31,14 +32,15 @@ internal class StaticFilesInstaller : BaseInstaller<string>
         if (!createFiles)
             return;
 
-        var parent = Path.GetDirectoryName(destinationPath.Full);
+        var parent = FileSystem.Path.GetDirectoryName(destinationPath.Full);
         if (parent != null)
         {
             FileSystem.Directory.CreateDirectory(parent);
         }
+
         FileSystem.File.WriteAllText(destinationPath.Full, fileContents);
     }
 
     public override IEnumerable<string> RelativeDirectoryPaths =>
-        files.Keys.SelectNotNull(Path.GetDirectoryName).ToImmutableHashSet();
+        files.Keys.SelectNotNull(FileSystem.Path.GetDirectoryName).ToImmutableHashSet();
 }

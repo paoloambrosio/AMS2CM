@@ -1,13 +1,16 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
+using System.IO.Abstractions;
 
 namespace Core.Mods.Installation.Installers;
 
 internal class ContainedDirsRootFinder : IRootFinder
 {
     private readonly ImmutableHashSet<string> rootDirs;
+    private readonly IPath path;
 
-    internal ContainedDirsRootFinder(IEnumerable<string> rootDirs)
+    internal ContainedDirsRootFinder(IPath path, IEnumerable<string> rootDirs)
     {
+        this.path = path;
         this.rootDirs = rootDirs.ToImmutableHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -16,14 +19,14 @@ internal class ContainedDirsRootFinder : IRootFinder
         directories
             .SelectMany(file =>
             {
-                var dirSegments = file.Split(Path.DirectorySeparatorChar);
+                var dirSegments = file.Split(path.DirectorySeparatorChar);
                 var segmentsUntilRoot = dirSegments.TakeWhile(_ => !rootDirs.Contains(_)).ToArray();
                 return dirSegments.Length == segmentsUntilRoot.Length
                     ? Array.Empty<string>()
-                    : new[] { Path.Join(segmentsUntilRoot) };
+                    : new[] { path.Join(segmentsUntilRoot) };
             })
             .ToImmutableSortedSet()
-            .Aggregate(new IRootFinder.RootPaths(), (roots, potentialRoot) =>
+            .Aggregate(new IRootFinder.RootPaths(path), (roots, potentialRoot) =>
                 roots.AddIfAncestorNotPresent(potentialRoot)
             );
 }

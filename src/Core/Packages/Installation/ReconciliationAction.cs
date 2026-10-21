@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -54,7 +54,7 @@ internal abstract class ReconciliationAction<TEventHandler>
         }
 
         private static IInstaller.Destination InstallTo(IDirectoryInfo destDir) =>
-            relativePath => new RootedPath(destDir.FullName, relativePath);
+            relativePath => new RootedPath(destDir, relativePath);
 
         public void Execute(ProcessingCallbacks<RootedPath> callbacks)
         {
@@ -88,7 +88,7 @@ internal abstract class ReconciliationAction<TEventHandler>
             EventHandler.UninstallingPackage(PackageName);
             CurrentInstallState = IInstallation.State.PartiallyInstalled;
             var filesToUninstall = CurrentInstalledFiles
-                .Select(relativePath => new RootedPath(InstallDir.FullName, relativePath)).ToImmutableList();
+                .Select(relativePath => new RootedPath(InstallDir, relativePath)).ToImmutableList();
             foreach (var gamePath in filesToUninstall)
             {
                 BackupStrategy.RestoreBackup(gamePath);
@@ -146,7 +146,7 @@ internal abstract class ReconciliationAction<TEventHandler>
             var callbacksAndRemoveShadowed = callbacks.AndNotAccepted(rp => CurrentInstalledFiles.Remove(rp.Relative));
             foreach (var relativePath in CurrentInstalledFiles.ToImmutableList())
             {
-                callbacksAndRemoveShadowed.Wrap(() => { }, new RootedPath(InstallDir.FullName, relativePath));
+                callbacksAndRemoveShadowed.Wrap(() => { }, new RootedPath(InstallDir, relativePath));
             }
 
             CurrentInstallState = IInstallation.State.Installed;

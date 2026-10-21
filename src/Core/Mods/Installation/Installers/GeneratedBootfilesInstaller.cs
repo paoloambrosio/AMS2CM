@@ -1,4 +1,4 @@
-﻿using System.IO.Abstractions;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
 using PCarsTools;
@@ -15,15 +15,15 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
 
     private readonly string pakPath;
 
-    private readonly string BmtFilesWildcard =
-        Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
+    private string BmtFilesWildcard =>
+        FileSystem.Path.Combine("vehicles", "_data", "effects", "backfire", "*.bmt");
 
     public GeneratedBootfilesInstaller(string packageName, IDirectoryInfo gameInstallationDirectory,
         IDirectoryInfo tempDir) :
         base(tempDir.FileSystem.Directory.CreateDirectory(
-            Path.Combine(tempDir.FullName, Guid.NewGuid().ToString())), packageName, null)
+            tempDir.FileSystem.Path.Combine(tempDir.FullName, Guid.NewGuid().ToString())), packageName, null)
     {
-        pakPath = Path.Combine(gameInstallationDirectory.FullName, PakfilesDirectory);
+        pakPath = FileSystem.Path.Combine(gameInstallationDirectory.FullName, PakfilesDirectory);
     }
 
     protected override void InstallAllFiles(InstallBody body)
@@ -42,20 +42,21 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
         ExtractPakFileFromGame(BootFlowPakFileName);
         ExtractPakFileFromGame(PhysicsPersistentPakFileName);
         CreateEmptyFile(ExtractedPakPath($"{PhysicsPersistentPakFileName}{BaseInstaller.RemoveFileSuffix}"));
-        FileSystem.File.Copy(Path.Combine(pakPath, BootSplashPakFileName), ExtractedPakPath(BootFlowPakFileName));
+        FileSystem.File.Copy(FileSystem.Path.Combine(pakPath, BootSplashPakFileName),
+            ExtractedPakPath(BootFlowPakFileName));
         DeleteFromExtractedFiles(BmtFilesWildcard);
     }
 
     private void ExtractPakFileFromGame(string fileName)
     {
-        var filePath = Path.Combine(pakPath, fileName);
+        var filePath = FileSystem.Path.Combine(pakPath, fileName);
         BPakFileEncryption.SetKeyset(KeysetType.PC2AndAbove);
         using var pakFile = BPakFile.FromFile(filePath, withExtraInfo: true, outputWriter: TextWriter.Null);
         pakFile.UnpackAll(Source.FullName);
     }
 
     private string ExtractedPakPath(string name) =>
-        Path.Combine(Source.FullName, PakfilesDirectory, name);
+        FileSystem.Path.Combine(Source.FullName, PakfilesDirectory, name);
 
     private void CreateEmptyFile(string path)
     {
@@ -65,7 +66,7 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
 
     private void CreateParentDirectory(string path)
     {
-        var parent = Path.GetDirectoryName(path);
+        var parent = FileSystem.Path.GetDirectoryName(path);
         if (parent is not null)
             FileSystem.Directory.CreateDirectory(parent);
     }

@@ -47,14 +47,14 @@ public class ModInstallConfig : ModInstaller.IConfig, BootfilesInstaller.IConfig
     };
 
     public IEnumerable<string> ExcludedFromInstall { get; set; } = new[] { @"**\*.orig", @"**\*.dll", @"**\*.exe" };
-    public string GameSupportedModDir { get; set; } = Path.Combine("UserData", "Mods");
+    public string GameSupportedModDir { get; set; } = @"UserData\Mods";
 
     public IEnumerable<string> ExcludedFromConfig { get; set; } = Array.Empty<string>();
     public bool GenerateModDetails { get; set; } = true;
 
     public string BootfilesVehicleListDir { get; set; } = "vehicles";
-    public string BootfilesTrackListDir { get; set; } = Path.Combine("tracks", "_data");
-    public string BootfilesDrivelineDir { get; set; } = Path.Combine("vehicles", "physics", "driveline");
+    public string BootfilesTrackListDir { get; set; } = @"tracks\_data";
+    public string BootfilesDrivelineDir { get; set; } = @"vehicles\physics\driveline";
 
     public string VehicleListFileName { get; set; } = "vehiclelist.lst";
     public string TrackListFileName { get; set; } = "tracklist.lst";

@@ -8,7 +8,9 @@ public class SubdirectoryTempDir : ITempDir
 
     public SubdirectoryTempDir(IDirectoryInfo parentPath)
     {
-        BaseDirectory = parentPath.FileSystem.DirectoryInfo.New(Path.Combine(parentPath.FullName, TempDirName));
+        BaseDirectory =
+            parentPath.FileSystem.DirectoryInfo.New(
+                parentPath.FileSystem.Path.Combine(parentPath.FullName, TempDirName));
     }
 
     public IDirectoryInfo BaseDirectory { get; }

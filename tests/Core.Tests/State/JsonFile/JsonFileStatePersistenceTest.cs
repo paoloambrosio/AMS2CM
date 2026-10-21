@@ -1,4 +1,4 @@
-﻿using System.IO.Abstractions;
+using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using Core.Packages.Installation;
 using Core.State;
@@ -267,10 +267,8 @@ public class JsonFileStatePersistenceTest
     [Fact]
     public void WriteState_WriteFailure()
     {
-        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            { Path.Combine(StateV2File, "File"), "NotUsed" }
-        });
+        var fs = new MockFileSystem();
+        fs.AddFile(fs.Path.Combine(StateV2File, "File"), "NotUsed");
         var sp = new JsonFileStatePersistence(fs.FileInfo.New(fs.Path.GetFullPath(StateV2File)),
             fs.FileInfo.New(fs.Path.GetFullPath(StateV1File)));
 

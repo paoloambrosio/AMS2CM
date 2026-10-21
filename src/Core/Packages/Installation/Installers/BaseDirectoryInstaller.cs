@@ -15,7 +15,7 @@ internal abstract class BaseDirectoryInstaller : BaseInstaller<IFileInfo>
 
     public override IEnumerable<string> RelativeDirectoryPaths =>
         EnumerateDirectories().Skip(1)
-            .Select(_ => Path.GetRelativePath(Source.FullName, _.FullName));
+            .Select(_ => FileSystem.Path.GetRelativePath(Source.FullName, _.FullName));
 
     protected override void InstallAllFiles(InstallBody body)
     {
@@ -23,7 +23,7 @@ internal abstract class BaseDirectoryInstaller : BaseInstaller<IFileInfo>
         {
             foreach (var fileInfo in directory.EnumerateFiles("*", SearchOption.TopDirectoryOnly).Where(IsVisible))
             {
-                var relativePath = Path.GetRelativePath(Source.FullName, fileInfo.FullName);
+                var relativePath = FileSystem.Path.GetRelativePath(Source.FullName, fileInfo.FullName);
                 body(relativePath, fileInfo);
             }
         }

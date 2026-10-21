@@ -53,7 +53,7 @@ public class ModInstallerTest
     {
         string[] packageFiles =
         [
-            Path.Combine(GameDirAtRoot, "NotRequiringConfiguration"),
+            fs.Path.Combine(GameDirAtRoot, "NotRequiringConfiguration"),
         ];
 
         var modInstaller = InstallWithModInstaller(InstallerOf("A", null, packageFiles));
@@ -71,9 +71,9 @@ public class ModInstallerTest
     {
         string[] packageFiles =
         [
-            Path.Combine(GameDirAtRoot, "File.crd"),
+            fs.Path.Combine(GameDirAtRoot, "File.crd"),
             // This disables configuration
-            Path.Combine(GameSupportedModDirectory, "Anything")
+            fs.Path.Combine(GameSupportedModDirectory, "Anything")
         ];
 
         var modInstaller = InstallWithModInstaller(InstallerOf("A", null, packageFiles));
@@ -89,14 +89,14 @@ public class ModInstallerTest
     [Fact]
     public void AutomaticModConfigurationForVehicles()
     {
-        var crdFile = Path.Combine(GameDirAtRoot, "File.crd");
-        var notInGameSupportedDir = Path.Combine(GameSupportedModDirectory + "Suffix", "File");
+        var crdFile = fs.Path.Combine(GameDirAtRoot, "File.crd");
+        var notInGameSupportedDir = fs.Path.Combine(GameSupportedModDirectory + "Suffix", "File");
         var drivelineRecord = $"RECORD Something{Environment.NewLine}";
 
         var packageFiles = new Dictionary<string, string>
         {
-            [Path.Combine("SubDir", crdFile)] = "Anything",
-            [Path.Combine("SubDir", notInGameSupportedDir)] = "Anything",
+            [fs.Path.Combine("SubDir", crdFile)] = "Anything",
+            [fs.Path.Combine("SubDir", notInGameSupportedDir)] = "Anything",
             ["FileAtRoot.txt"] = drivelineRecord,
         };
 
@@ -104,9 +104,10 @@ public class ModInstallerTest
 
         string[] expectedFiles =
         {
-            crdFile, notInGameSupportedDir, Path.Combine(GameSupportedModDirectory, "A_badcafe", VehicleListFile),
-            Path.Combine(GameSupportedModDirectory, "A_badcafe", DrivelineFile),
-            Path.Combine(GameSupportedModDirectory, "A_badcafe", "A_badcafe.xml")
+            crdFile, notInGameSupportedDir,
+            fs.Path.Combine(GameSupportedModDirectory, "A_badcafe", VehicleListFile),
+            fs.Path.Combine(GameSupportedModDirectory, "A_badcafe", DrivelineFile),
+            fs.Path.Combine(GameSupportedModDirectory, "A_badcafe", "A_badcafe.xml")
         };
 
         modInstaller.InstalledFiles.Should().BeEquivalentPathTo(ToDestRootedPath(expectedFiles));
@@ -115,14 +116,16 @@ public class ModInstallerTest
         VerifyCallbackCalledWith(expectedFiles);
 
         fs.AllFiles.Should().BeEquivalentPathTo(ToDestPath(expectedFiles));
-        fs.GetFile(Path.Combine(destDir, GameSupportedModDirectory, "A_badcafe", VehicleListFile))
+        fs.GetFile(fs.Path.Combine(destDir, GameSupportedModDirectory, "A_badcafe", VehicleListFile))
             .TextContents.Should().Be(crdFile);
         backupStrategyMock.Verify(m => m.AfterInstall(
-            new RootedPath(destDir, Path.Combine(GameSupportedModDirectory, "A_badcafe", VehicleListFile))));
-        fs.GetFile(Path.Combine(destDir, GameSupportedModDirectory, "A_badcafe", DrivelineFile))
+            new RootedPath(fs.DirectoryInfo.New(destDir),
+                fs.Path.Combine(GameSupportedModDirectory, "A_badcafe", VehicleListFile))));
+        fs.GetFile(fs.Path.Combine(destDir, GameSupportedModDirectory, "A_badcafe", DrivelineFile))
             .TextContents.Should().Be(drivelineRecord.Trim());
         backupStrategyMock.Verify(m => m.AfterInstall(
-            new RootedPath(destDir, Path.Combine(GameSupportedModDirectory, "A_badcafe", DrivelineFile))));
+            new RootedPath(fs.DirectoryInfo.New(destDir),
+                fs.Path.Combine(GameSupportedModDirectory, "A_badcafe", DrivelineFile))));
     }
 
     [Fact]
@@ -132,13 +135,13 @@ public class ModInstallerTest
 
         string[] packageFiles =
         [
-            Path.Combine(GameDirAtRoot, "File.crd")
+            fs.Path.Combine(GameDirAtRoot, "File.crd")
         ];
 
         var modInstaller = InstallWithModInstaller(InstallerOf("A", null, packageFiles));
 
         var expectedFiles = packageFiles.Concat([
-            Path.Combine(GameSupportedModDirectory, "A_0", VehicleListFile)
+            fs.Path.Combine(GameSupportedModDirectory, "A_0", VehicleListFile)
             // No mod xml
         ]).ToArray();
 
@@ -155,12 +158,12 @@ public class ModInstallerTest
     {
         string[] packageFiles =
         [
-            Path.Combine(GameDirAtRoot, "File.trd")
+            fs.Path.Combine(GameDirAtRoot, "File.trd")
         ];
 
         var modInstaller = InstallWithModInstaller(InstallerOf("Bee Cee", null, packageFiles));
 
-        var trackListFile = Path.Combine(GameSupportedModDirectory, "BeeCee_0", TrackListFile);
+        var trackListFile = fs.Path.Combine(GameSupportedModDirectory, "BeeCee_0", TrackListFile);
         var expectedFiles = packageFiles.Concat([
             trackListFile
             // No mod xml
@@ -173,19 +176,19 @@ public class ModInstallerTest
 
         fs.AllFiles.Should().BeEquivalentPathTo(ToDestPath(expectedFiles));
 
-        fs.GetFile(Path.Combine(destDir, trackListFile))
-            .TextContents.Should().Be(Path.Combine(GameDirAtRoot, "@File.trd"));
+        fs.GetFile(fs.Path.Combine(destDir, trackListFile))
+            .TextContents.Should().Be(fs.Path.Combine(GameDirAtRoot, "@File.trd"));
     }
 
     [Fact]
     public void TracksAndCarsAreConfiguredOnlyWhenInstalled()
     {
-        var modFile = Path.Combine(GameDirAtRoot, "Foo");
+        var modFile = fs.Path.Combine(GameDirAtRoot, "Foo");
         string[] packageFiles =
         [
-            Path.Combine("Subdir", modFile),
-            Path.Combine("Outside.trd"),
-            Path.Combine("Outside.crd"),
+            fs.Path.Combine("Subdir", modFile),
+            fs.Path.Combine("Outside.trd"),
+            fs.Path.Combine("Outside.crd"),
         ];
 
         var modInstaller = InstallWithModInstaller(InstallerOf("M", null, packageFiles));
@@ -198,8 +201,8 @@ public class ModInstallerTest
     {
         string[] filesToDelete =
         [
-            Path.Combine(GameDirAtRoot, "File.crd"),
-            Path.Combine(GameDirAtRoot, "File.trd")
+            fs.Path.Combine(GameDirAtRoot, "File.crd"),
+            fs.Path.Combine(GameDirAtRoot, "File.trd")
         ];
 
         ToDestPath(filesToDelete).ForEach(fs.AddEmptyFile);
@@ -216,16 +219,16 @@ public class ModInstallerTest
     {
         string[] files =
         [
-            Path.Combine(GameDirAtRoot, "File.CRD"),
-            Path.Combine(GameDirAtRoot, "File.TRD")
+            fs.Path.Combine(GameDirAtRoot, "File.CRD"),
+            fs.Path.Combine(GameDirAtRoot, "File.TRD")
         ];
 
         InstallWithModInstaller(InstallerOf("A", 1, files));
 
         fs.AllFiles.Should().BeEquivalentPathTo(ToDestPath([
             .. files,
-            Path.Combine(GameSupportedModDirectory, "A_1", VehicleListFile),
-            Path.Combine(GameSupportedModDirectory, "A_1", TrackListFile),
+            fs.Path.Combine(GameSupportedModDirectory, "A_1", VehicleListFile),
+            fs.Path.Combine(GameSupportedModDirectory, "A_1", TrackListFile),
         ]));
     }
 
@@ -235,7 +238,7 @@ public class ModInstallerTest
     {
         var modInstaller = new ModInstaller(inner, fs.DirectoryInfo.New(tempDir), configMock.Object,
             fs.DirectoryInfo.New(destDir), BootfilesPackageName);
-        modInstaller.Install(packagePath => new RootedPath(destDir, packagePath),
+        modInstaller.Install(packagePath => new RootedPath(fs.DirectoryInfo.New(destDir), packagePath),
             backupStrategyMock.Object, new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
         fs.Directory.Delete(tempDir, recursive: true);
         return modInstaller;
@@ -249,10 +252,10 @@ public class ModInstallerTest
         new(fs, fakeTimeProvider, name, versionHash, fileContents, Array.Empty<string>());
 
     private List<string> ToDestPath(IReadOnlyCollection<string> relativePaths) =>
-        [.. relativePaths.Select(f => Path.Combine(destDir, f))];
+        [.. relativePaths.Select(f => fs.Path.Combine(destDir, f))];
 
     private HashSet<RootedPath> ToDestRootedPath(IReadOnlyCollection<string> relativePaths) =>
-        [.. relativePaths.Select(f => new RootedPath(destDir, f))];
+        [.. relativePaths.Select(f => new RootedPath(fs.DirectoryInfo.New(destDir), f))];
 
     private void VerifyCallbackCalledWith(IReadOnlyCollection<string> relativePaths)
     {

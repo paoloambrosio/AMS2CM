@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using Core.Packages.Installation;
@@ -26,8 +26,8 @@ internal class JsonFileStatePersistence : IStatePersistence
     };
 
     public JsonFileStatePersistence(IDirectoryInfo modsPath) :
-        this(modsPath.FileSystem.FileInfo.New(Path.Combine(modsPath.FullName, StateV2FileName)),
-            modsPath.FileSystem.FileInfo.New(Path.Combine(modsPath.FullName, StateV1FileName)))
+        this(modsPath.FileSystem.FileInfo.New(modsPath.FileSystem.Path.Combine(modsPath.FullName, StateV2FileName)),
+            modsPath.FileSystem.FileInfo.New(modsPath.FileSystem.Path.Combine(modsPath.FullName, StateV1FileName)))
     {
     }
 

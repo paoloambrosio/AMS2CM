@@ -1,4 +1,4 @@
-﻿using System.IO.Abstractions;
+using System.IO.Abstractions;
 using Core.Utils;
 using Gameloop.Vdf;
 using Gameloop.Vdf.JsonConverter;
@@ -31,7 +31,7 @@ public static class Steam
     public static IDirectoryInfo AppLibraryPath(IFileSystem fileSystem, string appId)
     {
         var steamDir = MainInstallationPath(fileSystem);
-        var libraryFoldersPath = Path.Combine(steamDir.FullName, "steamapps", "libraryfolders.vdf");
+        var libraryFoldersPath = fileSystem.Path.Combine(steamDir.FullName, "steamapps", "libraryfolders.vdf");
         var gameLibraryFolders = ReadLibraryFolders(fileSystem.FileInfo.New(libraryFoldersPath))
             .Where(lf => lf.Apps.ContainsKey(appId)).ToArray();
         return gameLibraryFolders.Length switch

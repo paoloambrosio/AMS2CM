@@ -30,7 +30,8 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         var fileSystem = new FileSystem();
-        var config = Config.Load(fileSystem.FileInfo.New(Path.Combine(AppContext.BaseDirectory, "Config.yaml")),
+        var config = Config.Load(
+            fileSystem.FileInfo.New(fileSystem.Path.Combine(AppContext.BaseDirectory, "Config.yaml")),
             Environment.GetCommandLineArgs());
         var modManager = CreateModManager(fileSystem, config);
         var updateChecker = new GitHubUpdateChecker(config.Updates);

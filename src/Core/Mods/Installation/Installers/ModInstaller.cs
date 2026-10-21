@@ -36,13 +36,13 @@ public class ModInstaller : BaseModInstaller
         generateModDetails = config.GenerateModDetails;
 
         var normalisedName = string.Concat(
-            Path.GetFileNameWithoutExtension(inner.PackageName)
+            FileSystem.Path.GetFileNameWithoutExtension(inner.PackageName)
                 .Where(char.IsAsciiLetterOrDigit));
         var hexVersionHash = (inner.PackageVersionHash ?? 0).ToString("x");
         modName = $"{normalisedName}_{hexVersionHash}";
 
         modConfigPath =
-            new RootedPath(gameInstallationDir.FullName, Path.Combine(GameSupportedModRelativeDir, modName));
+            new RootedPath(gameInstallationDir, FileSystem.Path.Combine(GameSupportedModRelativeDir, modName));
     }
 
     public override IReadOnlySet<string> PackageDependencies =>
@@ -91,7 +91,8 @@ public class ModInstaller : BaseModInstaller
     private List<string> FindTrdFileEntries() =>
         FileEntriesToConfigure()
             .Where(p => p.EndsWith(".trd", StringComparison.OrdinalIgnoreCase))
-            .Select(fp => $"{Path.GetDirectoryName(fp)}{Path.DirectorySeparatorChar}@{Path.GetFileName(fp)}")
+            .Select(fp =>
+                $"{FileSystem.Path.GetDirectoryName(fp)}{FileSystem.Path.DirectorySeparatorChar}@{FileSystem.Path.GetFileName(fp)}")
             .ToList();
 
     private IEnumerable<string> FileEntriesToConfigure() =>

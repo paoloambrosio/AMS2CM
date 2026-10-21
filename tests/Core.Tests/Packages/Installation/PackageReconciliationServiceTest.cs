@@ -405,14 +405,14 @@ public class
     [Fact]
     public void Apply_UninstallRemovesEmptyDirectories()
     {
-        var subDir = Path.Combine("D1", "D2");
+        var subDir = TestFileSystem.Path.Combine("D1", "D2");
         TestFileSystem.Directory.CreateDirectory(DestinationPath(subDir).Full);
 
         InstallationState = new Dictionary<string, PackageInstallationState>
         {
             ["A"] = new(Time: ValueNotUsed, VersionHash: null, Partial: true, Dependencies: [], Files:
             [
-                Path.Combine(subDir, "F1")
+                TestFileSystem.Path.Combine(subDir, "F1")
             ], ShadowedBy: [])
         };
 
@@ -562,7 +562,7 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
     protected IEnumerable<string> InstalledPackages =>
         InstallationState?.Keys ?? Enumerable.Empty<string>();
 
-    private readonly string destinationDir = Path.GetRandomFileName();
+    private const string destinationDir = "Destination";
 
     protected ReconciliationServiceTestBase()
     {
@@ -572,7 +572,7 @@ public abstract class ReconciliationServiceTestBase<TEventHandler> where TEventH
     }
 
     protected RootedPath DestinationPath(string relativePath) =>
-        new(TestFileSystem.Path.GetFullPath(destinationDir), relativePath);
+        new(TestFileSystem.DirectoryInfo.New(destinationDir), relativePath);
 
     protected abstract IReconciliationService<TEventHandler> NewService(
         IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider);

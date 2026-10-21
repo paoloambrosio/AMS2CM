@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO.Abstractions;
 
 namespace Core.Games;
@@ -36,12 +36,12 @@ public class Game : IGame
 
     private IDirectoryInfo FindInstallationDirectory(IConfig config)
     {
-        if (Path.IsPathFullyQualified(config.Path))
+        if (fileSystem.Path.IsPathFullyQualified(config.Path))
         {
             return fileSystem.DirectoryInfo.New(config.Path);
         }
 
         var steamLibraryPath = Steam.AppLibraryPath(fileSystem, config.SteamId);
-        return fileSystem.DirectoryInfo.New(Path.Combine(steamLibraryPath.FullName, config.Path));
+        return fileSystem.DirectoryInfo.New(fileSystem.Path.Combine(steamLibraryPath.FullName, config.Path));
     }
 }

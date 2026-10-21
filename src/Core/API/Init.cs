@@ -19,7 +19,8 @@ public static class Init
     public static IModManager CreateModManager(IFileSystem fileSystem, Config config)
     {
         var game = new Game(fileSystem, config.Game);
-        var modsDir = fileSystem.DirectoryInfo.New(Path.Combine(game.InstallationDirectory.FullName, ModsDirName));
+        var modsDir =
+            fileSystem.DirectoryInfo.New(fileSystem.Path.Combine(game.InstallationDirectory.FullName, ModsDirName));
         var modRepository = new FileSystemRepository(modsDir);
         var statePersistence = new JsonFileStatePersistence(modsDir);
         var safeFileDelete = new WindowsRecyclingBin();

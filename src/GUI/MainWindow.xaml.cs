@@ -72,7 +72,7 @@ public sealed partial class MainWindow : WindowEx
         modList.Clear();
         foreach (var modState in modManager.FetchState().OrderBy(_ => _.PackageName))
         {
-            modList.Add(new ModVM(modState, modManager));
+            modList.Add(new ModVM(directory.FileSystem.Path, modState, modManager));
         }
     }
 
@@ -185,7 +185,7 @@ public sealed partial class MainWindow : WindowEx
         await SyncDialog.ShowAsync(Content.XamlRoot, filePaths, (dialog, filePath) =>
         {
             modManager.AddNewMod(filePath);
-            dialog.LogMessage(Path.GetFileName(filePath));
+            dialog.LogMessage(directory.FileSystem.Path.GetFileName(filePath));
         });
 
         SyncModListView();
@@ -201,7 +201,7 @@ public sealed partial class MainWindow : WindowEx
         await SyncDialog.ShowAsync(Content.XamlRoot, filePaths, (dialog, filePath) =>
         {
             modManager.DeleteMod(filePath);
-            dialog.LogMessage(Path.GetFileName(filePath));
+            dialog.LogMessage(directory.FileSystem.Path.GetFileName(filePath));
         });
 
         SyncModListView();

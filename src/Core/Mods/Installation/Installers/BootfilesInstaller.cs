@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -36,7 +36,7 @@ public class BootfilesInstaller : BaseModInstaller
         base(PackageOrGenerated(bootfilesPackageInstaller, gameInstallationDir, tempDir, bootfilesNaming),
             tempDir, config)
     {
-        gameInstallationPath = new RootedPath(gameInstallationDir.FullName);
+        gameInstallationPath = new RootedPath(gameInstallationDir);
         VehicleListDir = gameInstallationPath.SubPath(config.BootfilesVehicleListDir);
         TrackListDir = gameInstallationPath.SubPath(config.BootfilesTrackListDir);
         DrivelineDir = gameInstallationPath.SubPath(config.BootfilesDrivelineDir);
@@ -122,7 +122,7 @@ public class BootfilesInstaller : BaseModInstaller
 
     private string[] FileLinesOrEmpty(IDirectoryInfo parent, string fileName)
     {
-        var filePath = Path.Combine(parent.FullName, fileName);
+        var filePath = parent.FileSystem.Path.Combine(parent.FullName, fileName);
         return FileSystem.File.Exists(filePath) ? FileSystem.File.ReadAllLines(filePath) : Array.Empty<string>();
     }
 }

@@ -160,8 +160,8 @@ public class FileSystemRepositoryTest
         fs.DirectoryInfo.New(fullPath).Attributes |= attributes;
     }
 
-    private static string EnabledPath(string relativePath) => Path.Combine(RepositoryDir, EnabledSubdir, relativePath);
+    private string EnabledPath(string relativePath) => fs.Path.Combine(RepositoryDir, EnabledSubdir, relativePath);
 
-    private static string DisabledPath(string relativePath) =>
-        Path.Combine(RepositoryDir, DisabledSubdir, relativePath);
+    private string DisabledPath(string relativePath) =>
+        fs.Path.Combine(RepositoryDir, DisabledSubdir, relativePath);
 }
