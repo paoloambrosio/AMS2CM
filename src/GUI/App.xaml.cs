@@ -1,4 +1,5 @@
-﻿using Core.API;
+using System.IO.Abstractions;
+using Core.API;
 using Core.SoftwareUpdates;
 using Microsoft.UI.Xaml;
 using static Core.API.IModManager;
@@ -21,24 +22,27 @@ public partial class App : Application
         {
             return;
         }
+
         window.SignalErrorAsync(args.Exception);
         args.Handled = true;
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var config = Config.Load(Environment.GetCommandLineArgs());
-        var modManager = CreateModManager(config);
+        var fileSystem = new FileSystem();
+        var config = Config.Load(fileSystem.FileInfo.New(Path.Combine(AppContext.BaseDirectory, "Config.yaml")),
+            Environment.GetCommandLineArgs());
+        var modManager = CreateModManager(fileSystem, config);
         var updateChecker = new GitHubUpdateChecker(config.Updates);
-        window = new MainWindow(modManager, updateChecker);
+        window = new MainWindow(fileSystem.Directory, modManager, updateChecker);
         window.Activate();
     }
 
-    private static IModManager CreateModManager(Config config)
+    private static IModManager CreateModManager(IFileSystem fileSystem, Config config)
     {
         try
         {
-            return Init.CreateModManager(config);
+            return Init.CreateModManager(fileSystem, config);
         }
         catch (Exception ex)
         {

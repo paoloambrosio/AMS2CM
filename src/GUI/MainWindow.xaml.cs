@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO.Abstractions;
 using Core.API;
 using Core.SoftwareUpdates;
 using Core.Utils;
@@ -15,10 +16,12 @@ public sealed partial class MainWindow : WindowEx
     private readonly ObservableCollection<ModVM> modList;
     private readonly IModManager modManager;
     private readonly IUpdateChecker updateChecker;
+    private readonly IDirectory directory;
 
-    public MainWindow(IModManager modManager, IUpdateChecker updateChecker)
+    public MainWindow(IDirectory directory, IModManager modManager, IUpdateChecker updateChecker)
     {
         InitializeComponent();
+        this.directory = directory;
         this.modManager = modManager;
         this.updateChecker = updateChecker;
         modList = new ObservableCollection<ModVM>();
@@ -38,7 +41,8 @@ public sealed partial class MainWindow : WindowEx
         }
     }
 
-    private async void ApplyButton_Click(Microsoft.UI.Xaml.Controls.SplitButton sender, Microsoft.UI.Xaml.Controls.SplitButtonClickEventArgs args)
+    private async void ApplyButton_Click(Microsoft.UI.Xaml.Controls.SplitButton sender,
+        Microsoft.UI.Xaml.Controls.SplitButtonClickEventArgs args)
     {
         await SyncDialog.ShowAsync(Content.XamlRoot, (dialog, cancellationToken) =>
         {
@@ -86,16 +90,18 @@ public sealed partial class MainWindow : WindowEx
         }
     }
 
-    private async void ModListView_DragItemsStarting(object sender, Microsoft.UI.Xaml.Controls.DragItemsStartingEventArgs e)
+    private async void ModListView_DragItemsStarting(object sender,
+        Microsoft.UI.Xaml.Controls.DragItemsStartingEventArgs e)
     {
         var storageItems = new List<StorageFile>();
         var filePaths = e.Items.OfType<ModVM>().SelectNotNull(_ => _.PackageLocation);
         foreach (var filePath in filePaths)
         {
-            if (Directory.Exists(filePath))
+            if (directory.Exists(filePath))
             {
                 continue;
             }
+
             var si = await StorageFile.GetFileFromPathAsync(filePath);
             storageItems.Add(si);
         }
@@ -110,7 +116,8 @@ public sealed partial class MainWindow : WindowEx
         e.Data.RequestedOperation = DataPackageOperation.Move;
     }
 
-    private void ModListView_DragItemsCompleted(Microsoft.UI.Xaml.Controls.ListViewBase sender, Microsoft.UI.Xaml.Controls.DragItemsCompletedEventArgs args)
+    private void ModListView_DragItemsCompleted(Microsoft.UI.Xaml.Controls.ListViewBase sender,
+        Microsoft.UI.Xaml.Controls.DragItemsCompletedEventArgs args)
     {
         // Refresh list after removing mods with drag and drop
         SyncModListView();
@@ -176,10 +183,10 @@ public sealed partial class MainWindow : WindowEx
         }
 
         await SyncDialog.ShowAsync(Content.XamlRoot, filePaths, (dialog, filePath) =>
-            {
-                modManager.AddNewMod(filePath);
-                dialog.LogMessage(Path.GetFileName(filePath));
-            });
+        {
+            modManager.AddNewMod(filePath);
+            dialog.LogMessage(Path.GetFileName(filePath));
+        });
 
         SyncModListView();
     }

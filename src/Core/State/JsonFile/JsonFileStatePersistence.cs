@@ -14,9 +14,9 @@ internal class JsonFileStatePersistence : IStatePersistence
     private const string StateV2FileName = "state.json";
     private const string StateV1FileName = "installed.json";
 
-    private readonly IFileSystem fs;
-    private readonly string stateV2FilePath;
-    private readonly string stateV1FilePath;
+    private IFile File => stateV2FilePath.FileSystem.File;
+    private readonly IFileInfo stateV2FilePath;
+    private readonly IFileInfo stateV1FilePath;
 
     private static readonly JsonSerializerSettings JsonSerializerSettings = new()
     {
@@ -25,14 +25,14 @@ internal class JsonFileStatePersistence : IStatePersistence
         DateTimeZoneHandling = DateTimeZoneHandling.Utc
     };
 
-    public JsonFileStatePersistence(string modsPath) :
-        this(new FileSystem(), Path.Combine(modsPath, StateV2FileName), Path.Combine(modsPath, StateV1FileName))
+    public JsonFileStatePersistence(IDirectoryInfo modsPath) :
+        this(modsPath.FileSystem.FileInfo.New(Path.Combine(modsPath.FullName, StateV2FileName)),
+            modsPath.FileSystem.FileInfo.New(Path.Combine(modsPath.FullName, StateV1FileName)))
     {
     }
 
-    internal JsonFileStatePersistence(IFileSystem fs, string stateV2FilePath, string stateV1FilePath)
+    internal JsonFileStatePersistence(IFileInfo stateV2FilePath, IFileInfo stateV1FilePath)
     {
-        this.fs = fs;
         this.stateV2FilePath = stateV2FilePath;
         this.stateV1FilePath = stateV1FilePath;
     }
@@ -41,14 +41,15 @@ internal class JsonFileStatePersistence : IStatePersistence
     [SuppressMessage("ReSharper", "NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract")]
     public SavedState ReadState()
     {
-        if (fs.File.Exists(stateV2FilePath))
+        if (File.Exists(stateV2FilePath.FullName))
         {
-            var jsonState = ReadState<JsonSavedStateV2>(stateV2FilePath);
+            var jsonState = ReadState<JsonSavedStateV2>(stateV2FilePath.FullName);
             if (jsonState is null)
             {
                 return SavedState.Empty();
             }
-            var installTime = jsonState.Install.Time ?? fs.File.GetLastWriteTimeUtc(stateV2FilePath);
+
+            var installTime = jsonState.Install.Time ?? File.GetLastWriteTimeUtc(stateV2FilePath.FullName);
             return new SavedState(
                 Installation: jsonState.Install.Mods.SelectValues(pis => new PackageInstallationState(
                     Time: pis.Time == default ? installTime : pis.Time,
@@ -61,14 +62,15 @@ internal class JsonFileStatePersistence : IStatePersistence
             );
         }
 
-        if (fs.File.Exists(stateV1FilePath))
+        if (File.Exists(stateV1FilePath.FullName))
         {
-            var jsonState = ReadState<Dictionary<string, IReadOnlyCollection<string>>>(stateV1FilePath);
+            var jsonState = ReadState<Dictionary<string, IReadOnlyCollection<string>>>(stateV1FilePath.FullName);
             if (jsonState is null)
             {
                 return SavedState.Empty();
             }
-            var installTime = fs.File.GetLastWriteTimeUtc(stateV1FilePath);
+
+            var installTime = File.GetLastWriteTimeUtc(stateV1FilePath.FullName);
             return new SavedState(
                 Installation: jsonState.AsEnumerable().ToDictionary(
                     kv => kv.Key,
@@ -88,15 +90,17 @@ internal class JsonFileStatePersistence : IStatePersistence
     private T? ReadState<T>(string stateFile)
     {
         string contents;
-        try {
-            contents = fs.File.ReadAllText(stateFile);
+        try
+        {
+            contents = File.ReadAllText(stateFile);
         }
         catch (Exception ex)
         {
             throw new Exception($"Failed to read state file", ex);
         }
 
-        try {
+        try
+        {
             return JsonConvert.DeserializeObject<T>(contents, JsonSerializerSettings);
         }
         catch (Exception ex)
@@ -121,11 +125,11 @@ internal class JsonFileStatePersistence : IStatePersistence
             ));
 
         // Remove state v1 on write if upgrading from a previous version
-        fs.File.Delete(stateV1FilePath);
+        File.Delete(stateV1FilePath.FullName);
 
         try
         {
-            fs.File.WriteAllText(stateV2FilePath, JsonConvert.SerializeObject(jsonState, JsonSerializerSettings));
+            File.WriteAllText(stateV2FilePath.FullName, JsonConvert.SerializeObject(jsonState, JsonSerializerSettings));
         }
         catch (Exception ex)
         {

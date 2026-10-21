@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using Core.Games;
 using Core.Mods;
 using Core.Mods.Installation.Installers;
@@ -12,10 +13,11 @@ public class Config
     public Game.IConfig Game { get; set; } = new GameConfig();
     public ModInstallConfig ModInstall { get; set; } = new();
 
-    public static Config Load(string[] args)
+    public static Config Load(IFileInfo configurationFile, string[] args)
     {
+        using var stream = configurationFile.OpenRead();
         var config = new ConfigurationBuilder()
-            .AddYamlFile("Config.yaml")
+            .AddYamlStream(stream)
             .AddCommandLine(args)
             .Build();
         return config.Get<Config>() ?? throw new Exception("Failed to read configuration");
@@ -40,15 +42,11 @@ public class ModInstallConfig : ModInstaller.IConfig, BootfilesInstaller.IConfig
 {
     public IEnumerable<string> DirsAtRoot { get; set; } = new[]
     {
-        "cameras", "characters", "effects", "gui", "pakfiles", "render",
-        "text", "tracks", "userdata", "upgrade", "vehicles"
+        "cameras", "characters", "effects", "gui", "pakfiles", "render", "text", "tracks", "userdata", "upgrade",
+        "vehicles"
     };
-    public IEnumerable<string> ExcludedFromInstall { get; set; } = new[]
-    {
-        @"**\*.orig",
-        @"**\*.dll",
-        @"**\*.exe"
-    };
+
+    public IEnumerable<string> ExcludedFromInstall { get; set; } = new[] { @"**\*.orig", @"**\*.dll", @"**\*.exe" };
     public string GameSupportedModDir { get; set; } = Path.Combine("UserData", "Mods");
 
     public IEnumerable<string> ExcludedFromConfig { get; set; } = Array.Empty<string>();
