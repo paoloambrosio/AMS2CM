@@ -1,4 +1,4 @@
-﻿using System.IO.Abstractions;
+using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Utils;
 
@@ -29,7 +29,7 @@ public sealed class ReconciliationService<TEventHandler>(
         }
     }
 
-    private static void Execute(IReadOnlyCollection<IReconciliationAction> reconciliationActions,
+    private static void Execute(IReadOnlyCollection<Func<IReadOnlyCollection<IReconciliationAction>>> reconciliationActions,
         IReconciliationContext<TEventHandler> context,
         TEventHandler eventHandler,
         CancellationToken cancellationToken)
@@ -43,9 +43,18 @@ public sealed class ReconciliationService<TEventHandler>(
         eventHandler.ReconciliationStart();
 
         var progress = new PercentOfTotal(reconciliationActions.Count);
-        foreach (var action in reconciliationActions.TakeWhile(_ => !cancellationToken.IsCancellationRequested))
+        foreach (var resolve in reconciliationActions.TakeWhile(_ => !cancellationToken.IsCancellationRequested))
         {
-            context.ExecuteAction(action);
+            foreach (var action in resolve())
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    eventHandler.ReconciliationEnd();
+                    return;
+                }
+
+                context.ExecuteAction(action);
+            }
             eventHandler.ProgressUpdate(progress.IncrementDone());
         }
 

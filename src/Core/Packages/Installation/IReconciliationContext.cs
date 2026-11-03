@@ -10,7 +10,7 @@ public interface IReconciliationContext<TEventHandler> where TEventHandler : Rec
 
     IReadOnlyDictionary<string, PackageInstallationState> CurrentState { get; }
 
-    IReadOnlyCollection<IReconciliationAction> ReconciliationActions(IEnumerable<IPackage> packages,
+    IReadOnlyCollection<Func<IReadOnlyCollection<IReconciliationAction>>> ReconciliationActions(IEnumerable<IPackage> packages,
         IDirectoryInfo installDir, IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
         TEventHandler eventHandler);
 
