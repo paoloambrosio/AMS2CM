@@ -7,7 +7,7 @@ using Microsoft.Extensions.FileSystemGlobbing;
 
 namespace Core.Mods.Installation.Installers;
 
-public abstract class BaseModInstaller : IPackageInstaller
+public abstract class BaseModInstaller : IConfigurableInstaller
 {
     public interface IConfig
     {
@@ -84,6 +84,8 @@ public abstract class BaseModInstaller : IPackageInstaller
 
     public IEnumerable<string> RelativeDirectoryPaths =>
         Inner.RelativeDirectoryPaths.SelectNotNull(rootPaths.Value.GetPathFromRoot);
+
+    public abstract void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
 
     protected abstract void Install(Action innerInstall, IBackupStrategy backupStrategy,
         ProcessingCallbacks<RootedPath> callbacks);
