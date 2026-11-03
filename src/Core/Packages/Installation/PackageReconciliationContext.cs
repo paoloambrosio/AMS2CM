@@ -118,7 +118,7 @@ public class PackageReconciliationContext<TEventHandler>(
 
     public void ExecuteAction(IReconciliationAction action)
     {
-        var shadowedBy = new HashSet<string>();
+        var shadowedBy = new HashSet<string>(action.ShadowedBy);
         var installCallbacks = new ProcessingCallbacks<RootedPath>
         {
             Accept = gamePath =>
