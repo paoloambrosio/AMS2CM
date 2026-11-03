@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.IO.Abstractions;
+using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -58,26 +59,41 @@ public class BootfilesInstaller : BaseModInstaller
     protected override void Install(Action innerInstall, IBackupStrategy backupStrategy,
         ProcessingCallbacks<RootedPath> callbacks)
     {
-        var modConfigs = CollectModConfig();
-        if (modConfigs.None())
+        if (CollectModConfig().None())
         {
-            eventHandler.PostProcessingNotRequired();
+            NotRequired();
             return;
         }
-
-        eventHandler.PostProcessingStart();
         var packageNameIfNotGenerated = bootfilesNaming.IsGeneratedBootfiles(PackageName) ? PackageName : null;
         eventHandler.ExtractingBootfiles(packageNameIfNotGenerated);
-
         innerInstall();
-
-        Configure(backupStrategy, callbacks, modConfigs);
-
-        eventHandler.PostProcessingEnd();
     }
 
-    public override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
+    public void NotRequired() => eventHandler.PostProcessingNotRequired();
+
+    public void SelectSources(IReadOnlyDictionary<string, PackageInstallationState> state)
+    {
+        if (Inner is GeneratedBootfilesInstaller generated)
+        {
+            generated.SelectSources(state);
+        }
+    }
+
+    public void Prepare(IReadOnlyDictionary<string, PackageInstallationState> state)
+    {
+        SelectSources(state);
+        if (Inner is GeneratedBootfilesInstaller generated)
+        {
+            generated.Prepare();
+        }
+    }
+
+    public override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    {
+        eventHandler.PostProcessingStart();
         Configure(backupStrategy, callbacks, CollectModConfig());
+        eventHandler.PostProcessingEnd();
+    }
 
     private void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks, ConfigEntries modConfigs)
     {

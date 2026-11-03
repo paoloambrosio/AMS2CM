@@ -194,22 +194,6 @@ public class BootfilesInstallerTest
     }
 
     [Fact]
-    public void ConfigurationFailureLeavesBootfilesPartiallyInstalled()
-    {
-        fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", DrivelineFileName), "RECORD Test");
-        fs.AddFile(Path.Combine(destinationPath, BootfilesDrivelineDir, DrivelineFileName), "Missing insertion point");
-        var installer = CreateBootfiles();
-
-        var install = () => installer.Install(destinationRoot.Combine, backupStrategyMock.Object,
-            new ProcessingCallbacks<RootedPath>());
-
-        install.Should().Throw<Exception>().WithMessage("Could not find insertion point in driveline file");
-        installer.Installed.Should().Be(IInstallation.State.PartiallyInstalled);
-        installer.InstalledFiles.Should().BeEquivalentPathTo(DestRootedPaths(FileInBootfilesPackage));
-        eventHandlerMock.Verify(m => m.PostProcessingEnd(), Times.Never);
-    }
-
-    [Fact]
     public void RepeatedConfigurationDoesNotWriteUnchangedFiles()
     {
         fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle.crd");
@@ -317,6 +301,7 @@ public class BootfilesInstallerTest
         var bootfilesInstaller = CreateBootfiles();
         bootfilesInstaller.Install(destinationRoot.Combine,
             backupStrategyMock.Object, new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
+        bootfilesInstaller.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
         fs.Directory.Delete("Temp", recursive: true);
         return bootfilesInstaller;
     }

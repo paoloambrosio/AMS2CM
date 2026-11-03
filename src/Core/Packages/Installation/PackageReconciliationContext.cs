@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -15,6 +15,7 @@ public class PackageReconciliationContext<TEventHandler>(
 
     private readonly Dictionary<string, PackageInstallationState> currentState = new(currentState);
     private readonly Dictionary<RootedPath, string> installedFiles = [];
+    protected readonly HashSet<string> ReplacedPackages = [];
 
     public IReadOnlyDictionary<string, PackageInstallationState> CurrentState => currentState;
 
@@ -28,8 +29,14 @@ public class PackageReconciliationContext<TEventHandler>(
         TEventHandler eventHandler)
     {
         var inputs = CreatePlanningInputs(packages, eventHandler);
-        var joinedState = JoinPreviousState(inputs.PlanningState, inputs.Installers);
         var actionFactory = CreateActionFactory(backupStrategyProvider, installDir, eventHandler);
+        return CreateBatches(inputs, actionFactory);
+    }
+
+    private protected virtual IReadOnlyCollection<Func<IReadOnlyCollection<IReconciliationAction>>> CreateBatches(
+        PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
+    {
+        var joinedState = JoinPreviousState(inputs.PlanningState, inputs.Installers);
         return CreateActions(joinedState, actionFactory)
             .Select(action => (Func<IReadOnlyCollection<IReconciliationAction>>)(() => new[] { action })).ToArray();
     }
@@ -119,13 +126,18 @@ public class PackageReconciliationContext<TEventHandler>(
 
     public void ExecuteAction(IReconciliationAction action)
     {
+        if (action.InstallState == IInstallation.State.NotInstalled)
+        {
+            ReplacedPackages.Add(action.PackageName);
+        }
         var shadowedBy = new HashSet<string>(action.ShadowedBy);
         var installCallbacks = new ProcessingCallbacks<RootedPath>
         {
             Accept = gamePath =>
             {
                 var shadowingPackageName = installedFiles.GetValueOrDefault(gamePath);
-                if (shadowingPackageName is null)
+                if (shadowingPackageName is null ||
+                    (shadowingPackageName == action.PackageName && action is ConfigurationAction<TEventHandler>))
                 {
                     return true;
                 }
@@ -137,7 +149,21 @@ public class PackageReconciliationContext<TEventHandler>(
 
                 return false;
             },
-            Before = gamePath => installedFiles.Add(gamePath, action.PackageName)
+            Before = gamePath =>
+            {
+                installedFiles[gamePath] = action.PackageName;
+                foreach (var (name, state) in currentState.ToArray())
+                {
+                    if (name != action.PackageName && state.Files.Any(p => gamePath.Root.Combine(p) == gamePath))
+                    {
+                        currentState[name] = state with
+                        {
+                            Files = state.Files.Where(p => gamePath.Root.Combine(p) != gamePath).ToArray(),
+                            ShadowedBy = state.ShadowedBy.Append(action.PackageName).Distinct().ToArray()
+                        };
+                    }
+                }
+            }
         };
         try
         {
@@ -145,6 +171,10 @@ public class PackageReconciliationContext<TEventHandler>(
         }
         finally
         {
+            if (action.InstallState == IInstallation.State.NotInstalled)
+            {
+                ReplacedPackages.Add(action.PackageName);
+            }
             UpdateState(action, shadowedBy);
         }
     }
