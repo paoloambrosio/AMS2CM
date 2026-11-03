@@ -209,7 +209,108 @@ public class BootfilesInstallerTest
         eventHandlerMock.Verify(m => m.PostProcessingEnd(), Times.Never);
     }
 
+    [Fact]
+    public void RepeatedConfigurationDoesNotWriteUnchangedFiles()
+    {
+        fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle.crd");
+        var installer = InstallBootfiles();
+        backupStrategyMock.Invocations.Clear();
+
+        installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        backupStrategyMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void ChangedEntriesReplacePreviousBlocks()
+    {
+        var source = Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName);
+        fs.AddFile(source, "Old.crd");
+        var installer = InstallBootfiles();
+        fs.File.WriteAllText(source, "New.crd");
+
+        installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        TrimConfig(fs.File.ReadAllText(Path.Combine(destinationPath, BootfilesVehicleListDir, VehicleListFileName)))
+            .Should().Be("New.crd");
+    }
+
+    [Fact]
+    public void EmptyCategoryRemovesPreviousBlocks()
+    {
+        var source = Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName);
+        var target = Path.Combine(destinationPath, BootfilesVehicleListDir, VehicleListFileName);
+        const string original = "Original\r\n";
+        fs.AddFile(target, original);
+        fs.AddFile(source, "Vehicle.crd");
+        var installer = InstallBootfiles();
+        fs.File.Delete(source);
+
+        installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.ReadAllText(target).Should().Be(original);
+    }
+
+    [Fact]
+    public void MultipleBlocksAreRemovedWithoutChangingSurroundingText()
+    {
+        const string block = "\r\n### BEGIN AMS2CM\r\nVehicle.crd\r\n### END AMS2CM\r\n";
+
+        BootfilesInstaller.RemoveConfigBlocks("Before\n" + block + "Between\r\n" + block + "After")
+            .Should().Be("Before\nBetween\r\nAfter");
+    }
+
+    [Theory]
+    [InlineData("### BEGIN AMS2CM")]
+    [InlineData("### END AMS2CM")]
+    [InlineData("### END AMS2CM\n### BEGIN AMS2CM")]
+    [InlineData("### BEGIN AMS2CM\n### BEGIN AMS2CM\n### END AMS2CM")]
+    public void MalformedBlocksLeaveFileUnchanged(string original)
+    {
+        var target = Path.Combine(destinationPath, BootfilesVehicleListDir, VehicleListFileName);
+        fs.AddFile(target, original);
+        var installer = CreateBootfiles();
+
+        var configure = () => installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        configure.Should().Throw<InvalidDataException>();
+        fs.File.ReadAllText(target).Should().Be(original);
+        backupStrategyMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void BackupFailureLeavesConfigurationUnchanged()
+    {
+        fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle.crd");
+        var target = destinationRoot.Combine(BootfilesVehicleListDir, VehicleListFileName);
+        fs.AddFile(target.Full, "Original");
+        backupStrategyMock.Setup(b => b.PerformBackup(target)).Throws(new IOException("Backup failed"));
+        var installer = CreateBootfiles();
+
+        var configure = () => installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        configure.Should().Throw<IOException>();
+        fs.File.ReadAllText(target.Full).Should().Be("Original");
+        installer.InstalledFiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void WriteFailureTracksAttemptedConfigurationFile()
+    {
+        fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle.crd");
+        var target = destinationRoot.Combine(BootfilesVehicleListDir, VehicleListFileName);
+        fs.Directory.CreateDirectory(target.Full);
+        var installer = CreateBootfiles();
+
+        var configure = () => installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        configure.Should().Throw<UnauthorizedAccessException>();
+        installer.InstalledFiles.Should().Contain(target);
+        backupStrategyMock.Verify(b => b.AfterInstall(target), Times.Once);
+    }
+
     #region Utility Methods
+
 
     private BootfilesInstaller InstallBootfiles()
     {
