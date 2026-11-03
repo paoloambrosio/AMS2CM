@@ -35,6 +35,8 @@ public abstract class BaseModInstaller : IConfigurableInstaller
 
     private readonly HashSet<RootedPath> localInstalledFiles = new();
 
+    protected void RecordInstalledFile(RootedPath path) => localInstalledFiles.Add(path);
+
     protected BaseModInstaller(IPackageInstaller inner, IDirectoryInfo tempDir, IConfig config)
     {
         FileSystem = tempDir.FileSystem;

@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -81,25 +81,92 @@ public class BootfilesInstaller : BaseModInstaller
 
     private void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks, ConfigEntries modConfigs)
     {
-        if (modConfigs.CrdFileEntries.Count > 0)
-        {
-            eventHandler.PostProcessingVehicles();
-            AppendCrdFileEntries(modConfigs.CrdFileEntries, backupStrategy, callbacks);
-        }
+        ConfigureFile(VehicleListDir.Combine(VehicleListFileName),
+            original => ConfigureListContents(original, string.Join(Environment.NewLine, modConfigs.CrdFileEntries)),
+            eventHandler.PostProcessingVehicles, backupStrategy, callbacks);
+        ConfigureFile(TrackListDir.Combine(TrackListFileName),
+            original => ConfigureListContents(original, string.Join(Environment.NewLine, modConfigs.TrdFileEntries)),
+            eventHandler.PostProcessingTracks, backupStrategy, callbacks);
+        ConfigureFile(DrivelineDir.Combine(DrivelineFileName),
+            original => ConfigureDrivelineContents(original,
+                string.Join(Environment.NewLine + Environment.NewLine, DedupeRecordBlocks(modConfigs.DrivelineRecords))),
+            eventHandler.PostProcessingDrivelines, backupStrategy, callbacks);
+    }
 
-        if (modConfigs.TrdFileEntries.Count > 0)
+    private void ConfigureFile(RootedPath path, Func<string, string> configureContents, Action report,
+        IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    {
+        callbacks = InstalledFiles.Contains(path) ? new ProcessingCallbacks<RootedPath>() : callbacks;
+        if (!callbacks.Accept(path))
         {
-            eventHandler.PostProcessingTracks();
-            AppendTrdFileEntries(modConfigs.TrdFileEntries, backupStrategy, callbacks);
-        }
-
-        if (modConfigs.DrivelineRecords.Count == 0)
-        {
+            callbacks.NotAccepted(path);
             return;
         }
+        var exists = FileSystem.File.Exists(path.Full);
+        var original = exists ? FileSystem.File.ReadAllText(path.Full) : "";
+        var contents = configureContents(original);
+        if (contents == original) return;
 
-        eventHandler.PostProcessingDrivelines();
-        InsertDrivelineRecords(modConfigs.DrivelineRecords, backupStrategy, callbacks);
+        report();
+        backupStrategy.PerformBackup(path);
+        callbacks.Before(path);
+        try
+        {
+            FileSystem.Directory.GetParent(path.Full)?.Create();
+            RecordInstalledFile(path);
+            FileSystem.File.WriteAllText(path.Full, contents);
+        }
+        finally
+        {
+            backupStrategy.AfterInstall(path);
+        }
+        callbacks.After(path);
+    }
+
+    internal string ConfigureListContents(string original, string entries)
+    {
+        var contents = RemoveConfigBlocks(original);
+        return entries.Length == 0 ? contents : contents + WrapConfigBlock(entries);
+    }
+
+    internal string ConfigureDrivelineContents(string original, string records)
+    {
+        var contents = RemoveConfigBlocks(original);
+        if (records.Length == 0) return contents;
+        var block = WrapConfigBlock(records);
+        if (contents.Length == 0) return block;
+
+        var end = contents.LastIndexOf("END", StringComparison.Ordinal);
+        return end < 0
+            ? throw new InvalidDataException("Could not find insertion point in driveline file")
+            : contents.Insert(end, block);
+    }
+
+    internal static string RemoveConfigBlocks(string contents)
+    {
+        const string beginMarker = "### BEGIN AMS2CM";
+        const string endMarker = "### END AMS2CM";
+        while (true)
+        {
+            var begin = contents.IndexOf(beginMarker, StringComparison.Ordinal);
+            var end = contents.IndexOf(endMarker, StringComparison.Ordinal);
+            if (begin < 0 && end < 0) return contents;
+            var nextBegin = begin < 0 ? -1 : contents.IndexOf(beginMarker, begin + beginMarker.Length, StringComparison.Ordinal);
+            if (begin < 0 || end < begin || (nextBegin >= 0 && nextBegin < end))
+                throw new InvalidDataException("Malformed AMS2CM configuration block");
+
+            // The surrounding newlines are part of WrapConfigBlock, not the original file.
+            var from = begin;
+            if (from > 0 && contents[from - 1] == '\n')
+            {
+                from--;
+                if (from > 0 && contents[from - 1] == '\r') from--;
+            }
+            var to = end + endMarker.Length;
+            if (to < contents.Length && contents[to] == '\r') to++;
+            if (to < contents.Length && contents[to] == '\n') to++;
+            contents = contents.Remove(from, to - from);
+        }
     }
 
     protected override RootedPath VehicleListDir { get; }
