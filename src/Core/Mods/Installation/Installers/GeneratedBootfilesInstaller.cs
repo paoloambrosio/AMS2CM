@@ -1,4 +1,4 @@
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using Core.Packages.Installation.Installers;
 using Core.Packages.Installation;
 using Core.Utils;
@@ -17,6 +17,17 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
     private readonly string pakPath;
     private IFileInfo[]? sources;
     private bool prepared;
+    private int? version;
+
+    public override int? PackageVersionHash
+    {
+        get
+        {
+            SelectSources(new Dictionary<string, PackageInstallationState>());
+            return version;
+        }
+    }
+
     internal void SelectSources(IReadOnlyDictionary<string, PackageInstallationState> state)
     {
         sources ??= [.. new[] { BootFlowPakFileName, BootSplashPakFileName, PhysicsPersistentPakFileName }
@@ -31,7 +42,7 @@ internal class GeneratedBootfilesInstaller : BaseDirectoryInstaller
                 return source.Exists ? source
                     : throw new FileNotFoundException("Missing bootfiles generation source", source.FullName);
             })];
-
+        version ??= FileSystemHash.Hash32(sources);
     }
 
     internal void Prepare()

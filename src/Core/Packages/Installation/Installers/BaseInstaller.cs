@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using System.IO.Abstractions;
 using Core.Packages.Installation.Backup;
 using Core.Utils;
@@ -12,7 +11,7 @@ namespace Core.Packages.Installation.Installers;
 internal abstract class BaseInstaller<TPassthrough> : IPackageInstaller
 {
     public string PackageName { get; }
-    public int? PackageVersionHash { get; }
+    public virtual int? PackageVersionHash { get; }
 
     public IReadOnlySet<string> PackageDependencies { get; }
 

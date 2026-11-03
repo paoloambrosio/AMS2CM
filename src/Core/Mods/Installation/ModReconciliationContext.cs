@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using Core.Games;
 using Core.Mods.Installation.Installers;
 using Core.Packages;
@@ -70,7 +70,7 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
                 return state is null ? [] : new[] { actionFactory.Uninstall(bootfiles.PackageName, state) };
             }
 
-
+            (bootfiles as BootfilesInstaller)?.SelectSources(CurrentState);
             var previous = inputs.PlanningState.GetValueOrDefault(bootfiles.PackageName);
             var reinstall = state is null || state.Partial || state.VersionHash is null ||
                 bootfiles.PackageVersionHash is null || state.VersionHash != bootfiles.PackageVersionHash ||

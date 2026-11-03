@@ -50,9 +50,6 @@ public class BootfilesInstaller : BaseModInstaller
         bootfilesPackageInstaller ?? new GeneratedBootfilesInstaller(bootfilesNaming.GeneratedBootfilesName,
             gameInstallationDirectory, tempDir);
 
-    // Force bootfiles to be uninstalled every time
-    public override int? PackageVersionHash => null;
-
     // Bootfiles cannot have dependencies.
     public override IReadOnlySet<string> PackageDependencies => ImmutableHashSet<string>.Empty;
 
