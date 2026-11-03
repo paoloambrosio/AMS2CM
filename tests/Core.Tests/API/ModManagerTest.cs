@@ -848,6 +848,41 @@ public class ModManagerTest
     }
 
     [Fact]
+    public void Install_UnchangedBootfilesAreRetained()
+    {
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
+            CreateModPackage(101, [Path.Combine(DirAtRoot, "Track.trd")]), CreateCustomBootfiles(900)
+        ]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        var original = File.ReadAllText(GamePath(TrackListRelativePath).Full);
+        eventHandlerMock.Invocations.Clear();
+
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        eventHandlerMock.Verify(e => e.ExtractingBootfiles(It.IsAny<string?>()), Times.Never);
+        eventHandlerMock.Verify(e => e.UninstallingPackage($"{BootfilesPrefix}900"), Times.Never);
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Be(original);
+    }
+
+    [Fact]
+    public void Install_ChangedDependentOnlyReconfiguresBootfiles()
+    {
+        var bootfiles = CreateCustomBootfiles(900);
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
+            CreateModPackage(101, [Path.Combine(DirAtRoot, "Old.trd")]), bootfiles
+        ]);
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+        eventHandlerMock.Invocations.Clear();
+        modRepositoryMock.Setup(m => m.ListEnabled()).Returns([
+            CreateModPackage(102, [Path.Combine(DirAtRoot, "New.trd")]), bootfiles
+        ]);
+
+        modManager.InstallEnabledMods(eventHandlerMock.Object);
+
+        eventHandlerMock.Verify(e => e.ExtractingBootfiles(It.IsAny<string?>()), Times.Never);
+        File.ReadAllText(GamePath(TrackListRelativePath).Full).Should().Contain("New.trd").And.NotContain("Old.trd");
+    }
+    [Fact]
     public void Install_TrackModsAlwaysRequireBootfiles()
     {
         modRepositoryMock.Setup(m => m.ListEnabled()).Returns([

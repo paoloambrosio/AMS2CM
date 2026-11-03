@@ -231,6 +231,24 @@ public class ModReconciliationContextTest :
         reconcile.Should().Throw<IOException>();
         InstallationState[BootfilesPackageName].Should().BeEquivalentTo(original with { Partial = true });
     }    [Fact]
+    public void UnknownBootfilesVersionIsReinstalledOnce()
+    {
+        Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 1)]);
+        var state = new Dictionary<string, PackageInstallationState>(InstallationState)
+        {
+            [BootfilesPackageName] = InstallationState[BootfilesPackageName] with { VersionHash = null }
+        };
+        InstallationState = state;
+        EventHandlerMock.Invocations.Clear();
+
+        Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 1)]);
+        Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 1)]);
+
+        EventHandlerMock.Verify(e => e.InstallingPackage(BootfilesPackageName), Times.Once);
+        EventHandlerMock.Verify(e => e.SkippingPackage(BootfilesPackageName), Times.Once);
+    }
+
+    [Fact]
     public void ChangedShadowingReinstallsBootfiles()
     {
         Reconcile([
