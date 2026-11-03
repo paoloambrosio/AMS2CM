@@ -59,6 +59,11 @@ public class ModInstaller : BaseModInstaller
     {
         innerInstall();
 
+        Configure(backupStrategy, callbacks);
+    }
+
+    public override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    {
         var gameSupportedMod = FileEntriesToConfigure()
             .Any(p => p.StartsWith(GameSupportedModRelativeDir, StringComparison.OrdinalIgnoreCase));
         var modConfig = gameSupportedMod

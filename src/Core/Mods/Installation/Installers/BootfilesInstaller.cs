@@ -71,6 +71,16 @@ public class BootfilesInstaller : BaseModInstaller
 
         innerInstall();
 
+        Configure(backupStrategy, callbacks, modConfigs);
+
+        eventHandler.PostProcessingEnd();
+    }
+
+    public override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
+        Configure(backupStrategy, callbacks, CollectModConfig());
+
+    private void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks, ConfigEntries modConfigs)
+    {
         if (modConfigs.CrdFileEntries.Count > 0)
         {
             eventHandler.PostProcessingVehicles();
@@ -83,13 +93,13 @@ public class BootfilesInstaller : BaseModInstaller
             AppendTrdFileEntries(modConfigs.TrdFileEntries, backupStrategy, callbacks);
         }
 
-        if (modConfigs.DrivelineRecords.Count > 0)
+        if (modConfigs.DrivelineRecords.Count == 0)
         {
-            eventHandler.PostProcessingDrivelines();
-            InsertDrivelineRecords(modConfigs.DrivelineRecords, backupStrategy, callbacks);
+            return;
         }
 
-        eventHandler.PostProcessingEnd();
+        eventHandler.PostProcessingDrivelines();
+        InsertDrivelineRecords(modConfigs.DrivelineRecords, backupStrategy, callbacks);
     }
 
     protected override RootedPath VehicleListDir { get; }

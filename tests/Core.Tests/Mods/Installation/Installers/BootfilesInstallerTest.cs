@@ -14,6 +14,8 @@ namespace Core.Tests.Mods.Installation.Installers;
 [UnitTest]
 public class BootfilesInstallerTest
 {
+    #region Setup
+
     private const string BootfilesPackageName = "notused";
     private static readonly string FileInBootfilesPackage = Path.Combine(GameDirAtRoot, "Something");
 
@@ -25,8 +27,6 @@ public class BootfilesInstallerTest
     private const string TrackListFileName = "TrackList";
     private const string BootfilesDrivelineDir = "BootfilesDrivelineDir";
     private const string DrivelineFileName = "Driveline";
-
-    #region Setup
 
     private readonly MockFileSystem fs = new();
     private readonly FakeTimeProvider fakeTimeProvider = new();
@@ -177,19 +177,56 @@ public class BootfilesInstallerTest
     }
 
 
+    [Fact]
+    public void ConfigurationCanBeCalledWithoutInstallingBootfiles()
+    {
+        fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle.crd");
+        var installer = CreateBootfiles();
+
+        installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        installer.Should().BeAssignableTo<IConfigurableInstaller>();
+        TrimConfig(fs.File.ReadAllText(Path.Combine(destinationPath, BootfilesVehicleListDir, VehicleListFileName)))
+            .Should().Be("Vehicle.crd");
+        installer.InstalledFiles.Should().BeEquivalentPathTo(
+            DestRootedPaths(Path.Combine(BootfilesVehicleListDir, VehicleListFileName)));
+        eventHandlerMock.Verify(m => m.ExtractingBootfiles(It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public void ConfigurationFailureLeavesBootfilesPartiallyInstalled()
+    {
+        fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", DrivelineFileName), "RECORD Test");
+        fs.AddFile(Path.Combine(destinationPath, BootfilesDrivelineDir, DrivelineFileName), "Missing insertion point");
+        var installer = CreateBootfiles();
+
+        var install = () => installer.Install(destinationRoot.Combine, backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath>());
+
+        install.Should().Throw<Exception>().WithMessage("Could not find insertion point in driveline file");
+        installer.Installed.Should().Be(IInstallation.State.PartiallyInstalled);
+        installer.InstalledFiles.Should().BeEquivalentPathTo(DestRootedPaths(FileInBootfilesPackage));
+        eventHandlerMock.Verify(m => m.PostProcessingEnd(), Times.Never);
+    }
+
     #region Utility Methods
 
     private BootfilesInstaller InstallBootfiles()
     {
+        var bootfilesInstaller = CreateBootfiles();
+        bootfilesInstaller.Install(destinationRoot.Combine,
+            backupStrategyMock.Object, new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
+        fs.Directory.Delete("Temp", recursive: true);
+        return bootfilesInstaller;
+    }
+
+    private BootfilesInstaller CreateBootfiles()
+    {
         var tempDir = fs.Directory.CreateDirectory("Temp");
         var emptyPackage = new StaticFilesInstaller(fs, fakeTimeProvider, BootfilesPackageName, 42,
             new Dictionary<string, string> { [FileInBootfilesPackage] = "" }, Array.Empty<string>());
-        var bootfilesInstaller = new BootfilesInstaller(emptyPackage, tempDir, configMock.Object,
+        return new BootfilesInstaller(emptyPackage, tempDir, configMock.Object,
             fs.DirectoryInfo.New(destinationPath), bootfilesNamingMock.Object, eventHandlerMock.Object);
-        bootfilesInstaller.Install(destinationRoot.Combine,
-            backupStrategyMock.Object, new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
-        tempDir.Delete(recursive: true);
-        return bootfilesInstaller;
     }
 
     private static string MultiLineContents()
@@ -209,8 +246,8 @@ public class BootfilesInstallerTest
                 .Select(line => line.Split('#')[0].Trim())
                 .Where(line => !string.IsNullOrEmpty(line)));
 
-    private IReadOnlySet<RootedPath> DestRootedPaths(params string[] relativePaths) =>
-        relativePaths.Select(destinationRoot.Combine).ToHashSet();
+    private HashSet<RootedPath> DestRootedPaths(params string[] relativePaths) =>
+        [.. relativePaths.Select(destinationRoot.Combine)];
 
     private void VerifyCallbackCalledWith(IReadOnlySet<RootedPath> relativePaths)
     {
