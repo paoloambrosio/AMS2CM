@@ -158,12 +158,60 @@ public class ReconciliationServiceTest
         VerifyStateSaved();
     }
 
+    [Fact]
+    public void DeferredBatchObservesEarlierStateUpdates()
+    {
+        var first = Mock.Of<IReconciliationAction>();
+        var second = Mock.Of<IReconciliationAction>();
+        var resolve = new Mock<Func<IReadOnlyCollection<IReconciliationAction>>>(MockBehavior.Strict);
+        context.Setup(c => c.ReconciliationActions(packages, installDir, backups, events.Object))
+            .Returns(new[] { () => new[] { first }, resolve.Object });
+        events.InSequence(sequence).Setup(e => e.ReconciliationStart());
+        context.InSequence(sequence).Setup(c => c.ExecuteAction(first)).Callback(() =>
+            currentState["Package"] = new PackageInstallationState(DateTimeOffset.UnixEpoch, 1, false, [], ["File"], []));
+        ExpectProgress(0.5);
+        resolve.InSequence(sequence).Setup(r => r()).Returns(() =>
+        {
+            currentState.Should().ContainKey("Package");
+            return new[] { second };
+        });
+        ExpectActionExecuted(second);
+        ExpectProgress(1);
+        events.InSequence(sequence).Setup(e => e.ReconciliationEnd());
+        ExpectStateSaved();
+
+        Reconcile();
+
+        resolve.Verify(r => r(), Times.Once);
+        VerifyStateSaved();
+    }
+
+    [Fact]
+    public void CancellationWithinBatchStopsBeforeNextAction()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var first = Mock.Of<IReconciliationAction>();
+        var second = Mock.Of<IReconciliationAction>();
+        context.Setup(c => c.ReconciliationActions(packages, installDir, backups, events.Object))
+            .Returns(new Func<IReadOnlyCollection<IReconciliationAction>>[] { () => [first, second] });
+        events.InSequence(sequence).Setup(e => e.ReconciliationStart());
+        ExpectActionExecuted(first).Callback(cancellation.Cancel);
+        events.InSequence(sequence).Setup(e => e.ReconciliationEnd());
+        ExpectStateSaved();
+
+        Reconcile(cancellation.Token);
+
+        context.Verify(c => c.ExecuteAction(second), Times.Never);
+        events.Verify(e => e.ProgressUpdate(It.IsAny<IPercent>()), Times.Never);
+        VerifyStateSaved();
+    }
+
     #region Utility Methods
 
     private IReconciliationAction[] SetUpActions(int count)
     {
         var actions = Enumerable.Range(0, count).Select(_ => Mock.Of<IReconciliationAction>()).ToArray();
-        context.Setup(c => c.ReconciliationActions(packages, installDir, backups, events.Object)).Returns(actions);
+        context.Setup(c => c.ReconciliationActions(packages, installDir, backups, events.Object)).Returns(actions.Select(action => (Func<IReadOnlyCollection<IReconciliationAction>>)(() => new[] { action })).ToArray());
         return actions;
     }
 

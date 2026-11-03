@@ -22,7 +22,7 @@ public class PackageReconciliationContext<TEventHandler>(
         IReadOnlyList<IPackageInstaller> Installers,
         IReadOnlyDictionary<string, PackageInstallationState> PlanningState);
 
-    public IReadOnlyCollection<IReconciliationAction> ReconciliationActions(IEnumerable<IPackage> packages,
+    public IReadOnlyCollection<Func<IReadOnlyCollection<IReconciliationAction>>> ReconciliationActions(IEnumerable<IPackage> packages,
         IDirectoryInfo installDir,
         IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
         TEventHandler eventHandler)
@@ -30,7 +30,8 @@ public class PackageReconciliationContext<TEventHandler>(
         var inputs = CreatePlanningInputs(packages, eventHandler);
         var joinedState = JoinPreviousState(inputs.PlanningState, inputs.Installers);
         var actionFactory = CreateActionFactory(backupStrategyProvider, installDir, eventHandler);
-        return CreateActions(joinedState, actionFactory);
+        return CreateActions(joinedState, actionFactory)
+            .Select(action => (Func<IReadOnlyCollection<IReconciliationAction>>)(() => new[] { action })).ToArray();
     }
 
     protected virtual PlanningInputs CreatePlanningInputs(IEnumerable<IPackage> packages,
