@@ -53,13 +53,13 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
         new ModInstaller(packageInstaller, tempDir.BaseDirectory, config, game.InstallationDirectory,
             bootfilesInstaller.PackageName);
 
-    private protected override IReadOnlyCollection<Func<IReadOnlyCollection<IReconciliationAction>>> CreateBatches(
+    private protected override IReadOnlyCollection<IReconciliationBatch> CreateBatches(
         PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
         var bootfiles = inputs.Installers[^1];
         var ordinaryInputs = new PlanningInputs(inputs.Installers.SkipLast(1).ToArray(),
             inputs.PlanningState.Where(p => p.Key != bootfiles.PackageName).ToDictionary());
-        return [.. base.CreateBatches(ordinaryInputs, actionFactory), () =>
+        return [.. base.CreateBatches(ordinaryInputs, actionFactory), new DeferredReconciliationBatch(() =>
         {
             var state = CurrentState.GetValueOrDefault(bootfiles.PackageName);
             var required = CurrentState.Any(p => p.Key != bootfiles.PackageName &&
@@ -96,7 +96,7 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
                     () => CurrentState.GetValueOrDefault(bootfiles.PackageName), actionFactory));
             }
             return actions;
-        }];
+        })];
     }
 
     protected virtual IPackageInstaller CreateBootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
