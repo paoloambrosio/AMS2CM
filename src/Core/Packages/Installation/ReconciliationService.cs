@@ -18,47 +18,46 @@ public sealed class ReconciliationService<TEventHandler>(
         CancellationToken cancellationToken)
     {
         var context = createContext(previousState);
-        var actions = context.ReconciliationActions(packages, installDir, backupStrategyProvider, eventHandler);
-        try
-        {
-            Execute(actions, context, eventHandler, cancellationToken);
-        }
-        finally
-        {
-            afterInstall(context.CurrentState);
-        }
-    }
+        var batches = context.ReconciliationBatches(packages, installDir, backupStrategyProvider, eventHandler);
 
-    private static void Execute(IReadOnlyCollection<Func<IReadOnlyCollection<IReconciliationAction>>> reconciliationActions,
-        IReconciliationContext<TEventHandler> context,
-        TEventHandler eventHandler,
-        CancellationToken cancellationToken)
-    {
-        if (reconciliationActions.Count == 0)
+        if (batches.Count == 0)
         {
             eventHandler.ReconciliationNoPackages();
             return;
         }
 
         eventHandler.ReconciliationStart();
-
-        var progress = new PercentOfTotal(reconciliationActions.Count);
-        foreach (var resolve in reconciliationActions.TakeWhile(_ => !cancellationToken.IsCancellationRequested))
+        try
         {
-            foreach (var action in resolve())
+            Execute(batches, context, eventHandler, cancellationToken);
+        }
+        finally
+        {
+            afterInstall(context.CurrentState);
+        }
+        eventHandler.ReconciliationEnd();
+    }
+
+    private static void Execute(IReadOnlyCollection<IReconciliationBatch> batches,
+        IReconciliationContext<TEventHandler> context,
+        TEventHandler eventHandler,
+        CancellationToken cancellationToken)
+    {
+        var progress = new PercentOfTotal(batches.Count);
+        foreach (var batch in batches)
+        {
+            foreach (var action in batch.Resolve())
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    eventHandler.ReconciliationEnd();
                     return;
                 }
 
                 context.ExecuteAction(action);
             }
+
             eventHandler.ProgressUpdate(progress.IncrementDone());
         }
-
-        eventHandler.ReconciliationEnd();
     }
 }
 
