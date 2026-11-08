@@ -23,23 +23,23 @@ public class PackageReconciliationContext<TEventHandler>(
         IReadOnlyList<IPackageInstaller> Installers,
         IReadOnlyDictionary<string, PackageInstallationState> PlanningState);
 
-    public IReadOnlyCollection<IReconciliationBatch> ReconciliationBatches(IEnumerable<IPackage> packages,
+    public IReadOnlyCollection<Action> ReconciliationActions(IEnumerable<IPackage> packages,
         IDirectoryInfo installDir,
         IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
         TEventHandler eventHandler)
     {
         var inputs = CreatePlanningInputs(packages, eventHandler);
         var actionFactory = CreateActionFactory(backupStrategyProvider, installDir, eventHandler);
-        return CreateBatches(inputs, actionFactory);
+        return CreateActions(inputs, actionFactory);
     }
 
-    private protected virtual IReadOnlyCollection<IReconciliationBatch> CreateBatches(
+    private protected virtual IReadOnlyCollection<Action> CreateActions(
         PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
         var joinedState = JoinPreviousState(inputs.PlanningState, inputs.Installers);
         HashSet<string> processed = [];
         HashSet<string> toUninstall = [];
-        List<IReconciliationBatch> batches = [];
+        List<Action> actions = [];
         foreach (var (packageName, (state, installer)) in joinedState)
         {
             processed.Add(packageName);
@@ -49,11 +49,16 @@ public class PackageReconciliationContext<TEventHandler>(
                 toUninstall.Add(packageName);
             }
 
-            // Decide replacements from the original plan, but resolve ownership after earlier batches.
-            batches.Add(new DeferredReconciliationBatch(() =>
-                ResolveActions(packageName, state, installer, uninstall, actionFactory)));
+            // Decide replacements from the original plan, but resolve ownership after earlier actions.
+            actions.Add(() =>
+            {
+                foreach (var action in ResolveActions(packageName, state, installer, uninstall, actionFactory))
+                {
+                    ExecuteAction(action);
+                }
+            });
         }
-        return batches;
+        return actions;
     }
 
     protected virtual PlanningInputs CreatePlanningInputs(IEnumerable<IPackage> packages,
@@ -130,7 +135,7 @@ public class PackageReconciliationContext<TEventHandler>(
         state.ShadowedBy.Intersect(toUninstall).Any() ||
         (state.ShadowedBy.Count > 0 && !state.ShadowedBy.Any(processed.Contains));
 
-    public void ExecuteAction(IReconciliationAction action)
+    protected void ExecuteAction(IReconciliationAction action)
     {
         if (action.InstallState == IInstallation.State.NotInstalled)
         {

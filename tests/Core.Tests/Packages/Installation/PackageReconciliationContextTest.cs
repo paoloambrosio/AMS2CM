@@ -9,6 +9,8 @@ public class PackageReconciliationContextTest : ReconciliationIntegrationTestBas
 {
     #region Setup
 
+    private const double ProgressTolerance = 0.01;
+
     private class TestException : Exception;
 
     protected override IReconciliationContext<ReconciliationService.IEventHandler>.FactoryFunc ContextFactory =>
@@ -601,7 +603,7 @@ public class PackageReconciliationContextTest : ReconciliationIntegrationTestBas
     }
 
     [Fact]
-    public void Reconcile_CancellationAfterUninstallLeavesPackageAbsent()
+    public void Reconcile_CancellationDuringUninstallCompletesCurrentReplacement()
     {
         Reconcile([Package("A", 1, ["AF"]), Package("B", 1, ["BF"])]);
         var originalB = InstallationState["B"];
@@ -611,24 +613,30 @@ public class PackageReconciliationContextTest : ReconciliationIntegrationTestBas
 
         Reconcile([Package("A", 2, ["AF"]), Package("B", 2, ["BF"])], cancellation.Token);
 
-        InstallationState.Should().NotContainKey("A");
+        InstallationState["A"].VersionHash.Should().Be(2);
+        InstallationState["A"].Partial.Should().BeFalse();
+        InstallationState["A"].Files.Should().Equal("AF");
         InstallationState["B"].Should().BeEquivalentTo(originalB);
-        EventHandlerMock.Verify(e => e.InstallingPackage(It.IsAny<string>()), Times.Never);
-        EventHandlerMock.Verify(e => e.ProgressUpdate(It.IsAny<IPercent>()), Times.Never);
+        EventHandlerMock.Verify(e => e.InstallingPackage("A"), Times.Once);
+        EventHandlerMock.Verify(e => e.UninstallingPackage("B"), Times.Never);
+        EventHandlerMock.Verify(e => e.ProgressUpdate(It.Is<IPercent>(
+            p => Math.Abs(p.Percent - 0.5) <= ProgressTolerance)), Times.Once);
     }
 
     [Fact]
-    public void Reconcile_SubsequentRunCompletesCancelledUpdate()
+    public void Reconcile_SubsequentRunKeepsCompletedReplacement()
     {
         Reconcile([Package("A", 1, ["AF"]), Package("B", 1, ["BF"])]);
         using var cancellation = new CancellationTokenSource();
         EventHandlerMock.Setup(e => e.UninstallingPackage("A")).Callback(cancellation.Cancel);
         Reconcile([Package("A", 2, ["AF"]), Package("B", 2, ["BF"])], cancellation.Token);
+        EventHandlerMock.Invocations.Clear();
 
         Reconcile([Package("A", 2, ["AF"]), Package("B", 2, ["BF"])], CancellationToken.None);
 
-        InstallationState.Values.Should().OnlyContain(s => s.VersionHash == 2 && !s.Partial);
-        InstallationState.Keys.Should().BeEquivalentTo("A", "B");
+        EventHandlerMock.Verify(e => e.SkippingPackage("A"), Times.Once);
+        EventHandlerMock.Verify(e => e.UninstallingPackage("A"), Times.Never);
+        EventHandlerMock.Verify(e => e.InstallingPackage("A"), Times.Never);
     }
 
     [Fact]

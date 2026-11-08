@@ -18,9 +18,9 @@ public sealed class ReconciliationService<TEventHandler>(
         CancellationToken cancellationToken)
     {
         var context = createContext(previousState);
-        var batches = context.ReconciliationBatches(packages, installDir, backupStrategyProvider, eventHandler);
+        var actions = context.ReconciliationActions(packages, installDir, backupStrategyProvider, eventHandler);
 
-        if (batches.Count == 0)
+        if (actions.Count == 0)
         {
             eventHandler.ReconciliationNoPackages();
             return;
@@ -29,7 +29,7 @@ public sealed class ReconciliationService<TEventHandler>(
         eventHandler.ReconciliationStart();
         try
         {
-            Execute(batches, context, eventHandler, cancellationToken);
+            Execute(actions, eventHandler, cancellationToken);
         }
         finally
         {
@@ -38,24 +38,19 @@ public sealed class ReconciliationService<TEventHandler>(
         eventHandler.ReconciliationEnd();
     }
 
-    private static void Execute(IReadOnlyCollection<IReconciliationBatch> batches,
-        IReconciliationContext<TEventHandler> context,
+    private static void Execute(IReadOnlyCollection<Action> actions,
         TEventHandler eventHandler,
         CancellationToken cancellationToken)
     {
-        var progress = new PercentOfTotal(batches.Count);
-        foreach (var batch in batches)
+        var progress = new PercentOfTotal(actions.Count);
+        foreach (var action in actions)
         {
-            foreach (var action in batch.Resolve())
+            if (cancellationToken.IsCancellationRequested)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                context.ExecuteAction(action);
+                return;
             }
 
+            action();
             eventHandler.ProgressUpdate(progress.IncrementDone());
         }
     }

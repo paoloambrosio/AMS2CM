@@ -208,6 +208,31 @@ public class ModReconciliationContextTest :
     }
 
     [Fact]
+    public void CancellationDuringBootfilesUninstallCompletesConfiguration()
+    {
+        Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 1)]);
+        using var cancellation = new CancellationTokenSource();
+        var sequence = new MockSequence();
+        var events = new Mock<IEventHandler>(MockBehavior.Strict);
+        events.Setup(e => e.ReconciliationStart());
+        events.Setup(e => e.ReconciliationEnd());
+        events.Setup(e => e.ProgressUpdate(It.IsAny<IPercent>()));
+        events.InSequence(sequence).Setup(e => e.SkippingPackage(ModRequiringBootfiles));
+        events.InSequence(sequence).Setup(e => e.UninstallingPackage(BootfilesPackageName))
+            .Callback(cancellation.Cancel);
+        events.InSequence(sequence).Setup(e => e.InstallingPackage(BootfilesPackageName));
+        configure.Invocations.Clear();
+        configure.InSequence(sequence).Setup(c => c());
+
+        Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 2)],
+            cancellation.Token, events.Object);
+
+        configure.Verify(c => c(), Times.Once);
+        InstallationState[BootfilesPackageName].VersionHash.Should().Be(2);
+        InstallationState[BootfilesPackageName].Partial.Should().BeFalse();
+    }
+
+    [Fact]
     public void RemovingLastDependentRemovesBootfiles()
     {
         Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 1)]);

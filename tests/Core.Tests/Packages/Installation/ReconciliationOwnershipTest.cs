@@ -31,12 +31,12 @@ public class ReconciliationOwnershipTest
     [Fact]
     public void RepeatedKeepsPreserveHistoricalShadowing()
     {
-        var first = new PackageReconciliationContext<ReconciliationService.IEventHandler>(
+        var first = new TestReconciliationContext(
             new Dictionary<string, PackageInstallationState> { ["Package"] = state });
-        first.ExecuteAction(factory.Keep("Package", state));
-        var second = new PackageReconciliationContext<ReconciliationService.IEventHandler>(first.CurrentState);
+        first.Execute(factory.Keep("Package", state));
+        var second = new TestReconciliationContext(first.CurrentState);
 
-        second.ExecuteAction(factory.Keep("Package", first.CurrentState["Package"]));
+        second.Execute(factory.Keep("Package", first.CurrentState["Package"]));
 
         second.CurrentState["Package"].ShadowedBy.Should().ContainSingle("Owner");
     }
@@ -67,4 +67,14 @@ public class ReconciliationOwnershipTest
         action.InstallState.Should().Be(IInstallation.State.PartiallyInstalled);
         action.ShadowedBy.Should().ContainSingle("Owner");
     }
+
+    #region Utility Methods
+
+    private sealed class TestReconciliationContext(IReadOnlyDictionary<string, PackageInstallationState> currentState)
+        : PackageReconciliationContext<ReconciliationService.IEventHandler>(currentState)
+    {
+        public void Execute(IReconciliationAction action) => ExecuteAction(action);
+    }
+
+    #endregion
 }

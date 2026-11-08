@@ -53,13 +53,13 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
         new ModInstaller(packageInstaller, tempDir.BaseDirectory, config, game.InstallationDirectory,
             bootfilesInstaller.PackageName);
 
-    private protected override IReadOnlyCollection<IReconciliationBatch> CreateBatches(
+    private protected override IReadOnlyCollection<Action> CreateActions(
         PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
         var bootfiles = inputs.Installers[^1];
         var ordinaryInputs = new PlanningInputs(inputs.Installers.SkipLast(1).ToArray(),
             inputs.PlanningState.Where(p => p.Key != bootfiles.PackageName).ToDictionary());
-        return [.. base.CreateBatches(ordinaryInputs, actionFactory), new DeferredReconciliationBatch(() =>
+        return [.. base.CreateActions(ordinaryInputs, actionFactory), () =>
         {
             var state = CurrentState.GetValueOrDefault(bootfiles.PackageName);
             var required = CurrentState.Any(p => p.Key != bootfiles.PackageName &&
@@ -67,7 +67,11 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
             if (!required)
             {
                 (bootfiles as BootfilesInstaller)?.NotRequired();
-                return state is null ? [] : new[] { actionFactory.Uninstall(bootfiles.PackageName, state) };
+                if (state is not null)
+                {
+                    ExecuteAction(actionFactory.Uninstall(bootfiles.PackageName, state));
+                }
+                return;
             }
 
             (bootfiles as BootfilesInstaller)?.SelectSources(CurrentState);
@@ -95,8 +99,11 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
                 actions.Add(new ConfigurationAction<TEventHandler>(configurable,
                     () => CurrentState.GetValueOrDefault(bootfiles.PackageName), actionFactory));
             }
-            return actions;
-        })];
+            foreach (var action in actions)
+            {
+                ExecuteAction(action);
+            }
+        }];
     }
 
     protected virtual IPackageInstaller CreateBootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
