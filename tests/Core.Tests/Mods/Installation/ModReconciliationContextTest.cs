@@ -2,6 +2,7 @@ using Core.API;
 using Core.Games;
 using Core.Mods;
 using Core.Mods.Installation;
+using Core.Mods.Installation.Installers;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Backup;
 using Core.Packages.Installation.Installers;
@@ -71,7 +72,7 @@ public class ModReconciliationContextTest :
         public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
     }
 
-    private sealed class ConfigurableInstaller(IPackageInstaller inner, Action configure) : IConfigurableInstaller
+    private sealed class ConfigurableInstaller(IPackageInstaller inner, Action configure) : IReconfigurableInstaller
     {
         public string PackageName => inner.PackageName;
         public int? PackageVersionHash => inner.PackageVersionHash;
@@ -81,8 +82,12 @@ public class ModReconciliationContextTest :
         public DateTimeOffset InstallTime => inner.InstallTime;
         public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
         public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
-            ProcessingCallbacks<RootedPath> callbacks) => inner.Install(destination, backupStrategy, callbacks);
-        public void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) => configure();
+            ProcessingCallbacks<RootedPath> callbacks)
+        {
+            inner.Install(destination, backupStrategy, callbacks);
+            configure();
+        }
+        public void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) => configure();
     }
     #endregion
 

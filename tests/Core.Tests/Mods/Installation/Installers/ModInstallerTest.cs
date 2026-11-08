@@ -45,6 +45,8 @@ public class ModInstallerTest
         configMock.Setup(c => c.VehicleListFileName).Returns(VehicleListFile);
         configMock.Setup(c => c.TrackListFileName).Returns(TrackListFile);
         configMock.Setup(c => c.DrivelineFileName).Returns(DrivelineFile);
+        backupStrategyMock.Setup(b => b.RestoreBackup(It.IsAny<RootedPath>()))
+            .Callback<RootedPath>(path => fs.File.Delete(path.Full));
 
         var destDir = fs.Directory.CreateDirectory("Dest");
         destinationPath = destDir.FullName;
@@ -237,20 +239,181 @@ public class ModInstallerTest
     }
 
     [Fact]
-    public void ConfigurationCanBeCalledThroughSharedCapability()
+    public void ReconfigurationCanBeCalledThroughSharedCapability()
     {
         var trackFile = Path.Combine(GameDirAtRoot, "Track.trd");
-        var inner = InstallerOf("Mod", 1, new[] { trackFile });
-        var installer = new ModInstaller(inner, fs.Directory.CreateDirectory("Temp"),
-            configMock.Object, destinationRoot.Directory, BootfilesPackageName);
-        inner.Install(destinationRoot.Combine, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [trackFile]));
 
-        installer.Configure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Should().BeAssignableTo<IReconfigurableInstaller>().Which
+            .Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
-        installer.Should().BeAssignableTo<IConfigurableInstaller>();
         fs.File.ReadAllText(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod_1", TrackListFile))
             .Should().Be(Path.Combine(GameDirAtRoot, "@Track.trd"));
         installer.PackageDependencies.Should().ContainSingle(BootfilesPackageName);
+    }
+
+    [Fact]
+    public void ReconfigurationDoesNotWriteUnchangedFiles()
+    {
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1,
+            [Path.Combine(GameDirAtRoot, "Vehicle.crd")]));
+        backupStrategyMock.Invocations.Clear();
+        callbackMock.Invocations.Clear();
+
+        installer.Reconfigure(backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
+
+        backupStrategyMock.VerifyNoOtherCalls();
+        callbackMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void ReconfigurationRemovesMissingVehiclesFromList()
+    {
+        var removed = Path.Combine(GameDirAtRoot, "Removed.crd");
+        var remaining = Path.Combine(GameDirAtRoot, "Remaining.crd");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [removed, remaining]));
+        fs.File.Delete(destinationRoot.Combine(removed).Full);
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.ReadAllText(destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile).Full)
+            .Should().Be(remaining);
+    }
+
+    [Fact]
+    public void ReconfigurationRemovesObsoleteTrackList()
+    {
+        var track = Path.Combine(GameDirAtRoot, "Track.trd");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [track]));
+        var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", TrackListFile);
+        fs.File.Delete(destinationRoot.Combine(track).Full);
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.Exists(list.Full).Should().BeFalse();
+        installer.InstalledFiles.Should().NotContain(list);
+        installer.PackageDependencies.Should().BeEmpty();
+        backupStrategyMock.Verify(b => b.RestoreBackup(list), Times.Once);
+    }
+
+    [Fact]
+    public void FailedListRemovalPreservesOwnership()
+    {
+        var track = Path.Combine(GameDirAtRoot, "Track.trd");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [track]));
+        var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", TrackListFile);
+        fs.File.Delete(destinationRoot.Combine(track).Full);
+        backupStrategyMock.Setup(b => b.RestoreBackup(list)).Throws(new IOException("Removal failed"));
+
+        var reconfigure = () => installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        reconfigure.Should().Throw<IOException>().WithMessage("Removal failed");
+        installer.InstalledFiles.Should().Contain(list);
+    }
+
+    [Fact]
+    public void FailedListBackupPreservesOriginalContents()
+    {
+        var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
+        var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile);
+        fs.AddFile(list.Full, "Original");
+        backupStrategyMock.Setup(b => b.PerformBackup(list)).Throws(new IOException("Backup failed"));
+        var installer = new ModInstaller(InstallerOf("Mod", 1, [vehicle]), fs.Directory.CreateDirectory("Temp"),
+            configMock.Object, destinationRoot.Directory, BootfilesPackageName);
+
+        var install = () => installer.Install(destinationRoot.Combine, backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath>());
+
+        install.Should().Throw<IOException>().WithMessage("Backup failed");
+        fs.File.ReadAllText(list.Full).Should().Be("Original");
+        installer.InstalledFiles.Should().NotContain(list);
+    }
+
+    [Fact]
+    public void ReconfigurationRestoresOriginalListContents()
+    {
+        var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
+        var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile);
+        fs.AddFile(list.Full, "Original\r\n");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [vehicle]));
+        fs.File.Delete(destinationRoot.Combine(vehicle).Full);
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.ReadAllText(list.Full).Should().Be("Original\r\n");
+    }
+
+    [Fact]
+    public void ReconfigurationPreservesDrivelineAfterStagingCleanup()
+    {
+        configMock.Setup(c => c.GenerateModDetails).Returns(false);
+        var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, new Dictionary<string, string>
+        {
+            [Path.Combine("PackageRoot", vehicle)] = "Vehicle",
+            ["Records.txt"] = "RECORD Example"
+        }));
+        var driveline = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", DrivelineFile);
+        fs.File.Delete(destinationRoot.Combine(vehicle).Full);
+        backupStrategyMock.Invocations.Clear();
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.ReadAllText(driveline.Full).Should().Be("RECORD Example");
+        installer.InstalledFiles.Should().Contain(driveline);
+        installer.PackageDependencies.Should().ContainSingle(BootfilesPackageName);
+        backupStrategyMock.Verify(b => b.PerformBackup(driveline), Times.Never);
+        backupStrategyMock.Verify(b => b.AfterInstall(driveline), Times.Never);
+    }
+
+    [Fact]
+    public void ReconfigurationCreatesManifestWhenTracksDisappear()
+    {
+        var track = Path.Combine(GameDirAtRoot, "Track.trd");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1,
+            [track, Path.Combine(GameDirAtRoot, "Vehicle.crd")]));
+        fs.File.Delete(destinationRoot.Combine(track).Full);
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.ReadAllText(destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", "Mod_1.xml").Full)
+            .Should().Be(installer.ModManifest);
+        installer.PackageDependencies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ReconfigurationRemovesObsoleteManifest()
+    {
+        var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
+        var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [vehicle]));
+        var manifest = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", "Mod_1.xml");
+        fs.File.Delete(destinationRoot.Combine(vehicle).Full);
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.Exists(manifest.Full).Should().BeFalse();
+        installer.InstalledFiles.Should().NotContain(manifest);
+    }
+
+    [Fact]
+    public void ReconfigurationRetriesFailedListUpdateFromOriginalContents()
+    {
+        var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
+        var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile);
+        fs.AddFile(list.Full, "Original\r\n");
+        backupStrategyMock.SetupSequence(b => b.AfterInstall(list))
+            .Throws(new IOException("Tracking failed"))
+            .Pass();
+        var installer = new ModInstaller(InstallerOf("Mod", 1, [vehicle]), fs.Directory.CreateDirectory("Temp"),
+            configMock.Object, destinationRoot.Directory, BootfilesPackageName);
+        var install = () => installer.Install(destinationRoot.Combine, backupStrategyMock.Object,
+            new ProcessingCallbacks<RootedPath>());
+        install.Should().Throw<IOException>();
+
+        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+
+        fs.File.ReadAllText(list.Full).Should().Be("Original\r\n" + vehicle);
     }
 
     [Fact]

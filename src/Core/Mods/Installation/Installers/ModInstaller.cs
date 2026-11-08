@@ -26,6 +26,8 @@ public class ModInstaller : BaseModInstaller
 
     private readonly RootedPath modConfigPath;
     private readonly string modName;
+    private readonly Dictionary<RootedPath, string?> originalConfiguration = new();
+    private bool hasDrivelineRecords;
 
     internal ModInstaller(IPackageInstaller inner, IDirectoryInfo tempDir, IConfig config,
         IDirectoryInfo gameInstallationDir, string bootfilesPackageName) :
@@ -54,38 +56,77 @@ public class ModInstaller : BaseModInstaller
 
     protected override RootedPath DrivelineDir => modConfigPath;
 
-    protected override void Install(Action innerInstall, IBackupStrategy backupStrategy,
+    protected override void Configure(IBackupStrategy backupStrategy,
         ProcessingCallbacks<RootedPath> callbacks)
     {
-        innerInstall();
-
-        Configure(backupStrategy, callbacks);
+        if (ConfiguredByPackage()) return;
+        var records = FindDrivelineRecords();
+        hasDrivelineRecords = records.Count > 0;
+        InsertDrivelineRecords(records, backupStrategy, callbacks);
+        Reconfigure(backupStrategy, callbacks);
     }
 
-    public override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    /// <summary>
+    /// Refreshes lists on the instance that installed this mod, preserving its driveline configuration.
+    /// </summary>
+    public override void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
     {
-        var gameSupportedMod = FileEntriesToConfigure()
-            .Any(p => p.StartsWith(GameSupportedModRelativeDir, StringComparison.OrdinalIgnoreCase));
-        var modConfig = gameSupportedMod
-            ? ConfigEntries.Empty
-            : new ConfigEntries(FindCrdFileEntries(), FindTrdFileEntries(), FindDrivelineRecords());
+        if (ConfiguredByPackage()) return;
+        var vehicles = FindCrdFileEntries();
+        var tracks = FindTrdFileEntries();
+        UpdateList(VehicleListDir.Combine(VehicleListFileName), vehicles, backupStrategy, callbacks);
+        UpdateList(TrackListDir.Combine(TrackListFileName), tracks, backupStrategy, callbacks);
 
-        if (modConfig.None())
-        {
-            return;
-        }
+        var hasConfiguration = vehicles.Count > 0 || tracks.Count > 0 || hasDrivelineRecords;
+        var needsManifest = hasConfiguration && generateModDetails && tracks.Count == 0;
+        UpdateConfigurationFile(modConfigPath.Combine($"{modName}.xml"),
+            original => needsManifest ? ModManifest : original, backupStrategy, callbacks);
+        bootfilesDependency = hasConfiguration && !needsManifest ? [bootfilesPackageName] : [];
+    }
 
-        AppendCrdFileEntries(modConfig.CrdFileEntries, backupStrategy, callbacks);
-        AppendTrdFileEntries(modConfig.TrdFileEntries, backupStrategy, callbacks);
-        InsertDrivelineRecords(modConfig.DrivelineRecords, backupStrategy, callbacks);
-        if (generateModDetails && !modConfig.TrdFileEntries.Any())
+    private bool ConfiguredByPackage() => FileEntriesToConfigure()
+        .Any(p => p.StartsWith(GameSupportedModRelativeDir, StringComparison.OrdinalIgnoreCase));
+
+    private void UpdateList(RootedPath path, List<string> entries,
+        IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
+        UpdateConfigurationFile(path,
+            original => entries.Count == 0 ? original : original + string.Join(Environment.NewLine, entries),
+            backupStrategy, callbacks);
+
+    private void UpdateConfigurationFile(RootedPath path, Func<string?, string?> configure,
+        IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    {
+        var current = FileSystem.File.Exists(path.Full) ? FileSystem.File.ReadAllText(path.Full) : null;
+        if (!originalConfiguration.TryGetValue(path, out var original))
         {
-            SafeWriteAllText(modConfigPath.Combine($"{modName}.xml"), ModManifest, backupStrategy, callbacks);
+            original = current;
+            originalConfiguration.Add(path, original);
         }
-        else
+        var contents = configure(original);
+        if (contents == current) return;
+
+        var owned = InstalledFiles.Contains(path);
+        var effectiveCallbacks = owned ? new ProcessingCallbacks<RootedPath>() : callbacks;
+        effectiveCallbacks.Wrap(() =>
         {
-            bootfilesDependency = new[] { bootfilesPackageName };
-        }
+            if (contents is null)
+            {
+                backupStrategy.RestoreBackup(path);
+                ForgetInstalledFile(path);
+                return;
+            }
+            if (!owned) backupStrategy.PerformBackup(path);
+            RecordInstalledFile(path);
+            try
+            {
+                FileSystem.Directory.GetParent(path.Full)?.Create();
+                FileSystem.File.WriteAllText(path.Full, contents);
+            }
+            finally
+            {
+                backupStrategy.AfterInstall(path);
+            }
+        }, path);
     }
 
     private List<string> FindCrdFileEntries() =>
@@ -100,7 +141,8 @@ public class ModInstaller : BaseModInstaller
             .ToList();
 
     private IEnumerable<string> FileEntriesToConfigure() =>
-        InstalledFiles
+        Inner.InstalledFiles
+            .Where(rp => rp.Root != StagingRoot)
             .Where(rp => FileSystem.File.Exists(rp.Full))
             .Select(rp => rp.Relative)
             .Where(p => filesToConfigureMatcher.Match(p).HasMatches);

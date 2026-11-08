@@ -94,14 +94,15 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
             actions.Add(reinstall || state is null
                 ? actionFactory.Install(bootfiles)
                 : actionFactory.Keep(bootfiles.PackageName, state));
-            if (bootfiles is IConfigurableInstaller configurable)
-            {
-                actions.Add(new ConfigurationAction<TEventHandler>(configurable,
-                    () => CurrentState.GetValueOrDefault(bootfiles.PackageName), actionFactory));
-            }
             foreach (var action in actions)
             {
                 ExecuteAction(action);
+            }
+            if (!reinstall && bootfiles is IReconfigurableInstaller configurable)
+            {
+                ExecuteAction(new ReconfigurationAction<TEventHandler>(configurable,
+                    () => CurrentState.GetValueOrDefault(bootfiles.PackageName), actionFactory),
+                    allowUpdatingOwnedFiles: true);
             }
         }];
     }

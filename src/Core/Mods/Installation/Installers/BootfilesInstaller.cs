@@ -85,7 +85,10 @@ public class BootfilesInstaller : BaseModInstaller
         }
     }
 
-    public override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    protected override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
+        Reconfigure(backupStrategy, callbacks);
+
+    public override void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
     {
         eventHandler.PostProcessingStart();
         Configure(backupStrategy, callbacks, CollectModConfig());

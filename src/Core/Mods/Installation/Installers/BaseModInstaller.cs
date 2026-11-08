@@ -7,7 +7,7 @@ using Microsoft.Extensions.FileSystemGlobbing;
 
 namespace Core.Mods.Installation.Installers;
 
-public abstract class BaseModInstaller : IConfigurableInstaller
+public abstract class BaseModInstaller : IReconfigurableInstaller
 {
     public interface IConfig
     {
@@ -33,9 +33,11 @@ public abstract class BaseModInstaller : IConfigurableInstaller
 
     private bool postProcessingDone;
 
-    private readonly HashSet<RootedPath> localInstalledFiles = new();
+    private readonly HashSet<RootedPath> localInstalledFiles = [];
 
     protected void RecordInstalledFile(RootedPath path) => localInstalledFiles.Add(path);
+
+    protected void ForgetInstalledFile(RootedPath path) => localInstalledFiles.Remove(path);
 
     protected BaseModInstaller(IPackageInstaller inner, IDirectoryInfo tempDir, IConfig config)
     {
@@ -74,11 +76,14 @@ public abstract class BaseModInstaller : IConfigurableInstaller
     public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
         ProcessingCallbacks<RootedPath> callbacks)
     {
+        postProcessingDone = false;
         Install(
-            () => Inner.Install(
-                ConfigToStagingDir(destination),
-                backupStrategy,
-                IgnoreForStagedFiles(callbacks.AndAccept(Whitelisted))),
+            () =>
+            {
+                Inner.Install(ConfigToStagingDir(destination), backupStrategy,
+                    IgnoreForStagedFiles(callbacks.AndAccept(Whitelisted)));
+                Configure(backupStrategy, callbacks);
+            },
             backupStrategy, callbacks);
 
         postProcessingDone = true;
@@ -87,10 +92,12 @@ public abstract class BaseModInstaller : IConfigurableInstaller
     public IEnumerable<string> RelativeDirectoryPaths =>
         Inner.RelativeDirectoryPaths.SelectNotNull(rootPaths.Value.GetPathFromRoot);
 
-    public abstract void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
+    public abstract void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
 
-    protected abstract void Install(Action innerInstall, IBackupStrategy backupStrategy,
-        ProcessingCallbacks<RootedPath> callbacks);
+    protected abstract void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
+
+    protected virtual void Install(Action innerInstall, IBackupStrategy backupStrategy,
+        ProcessingCallbacks<RootedPath> callbacks) => innerInstall();
 
     private IInstaller.Destination ConfigToStagingDir(IInstaller.Destination destination) =>
         pathInPackage =>
@@ -131,17 +138,7 @@ public abstract class BaseModInstaller : IConfigurableInstaller
     private bool RootIsStagingDir(RootedPath rp) =>
         rp.Root == StagingRoot;
 
-    protected void AppendCrdFileEntries(IEnumerable<string> crdFileEntries,
-        IBackupStrategy backupStrategy,
-        ProcessingCallbacks<RootedPath> callbacks) =>
-        AppendEntryList(VehicleListDir.Combine(VehicleListFileName), crdFileEntries, backupStrategy, callbacks);
-
     protected abstract RootedPath VehicleListDir { get; }
-
-    protected void AppendTrdFileEntries(IEnumerable<string> trdFileEntries,
-        IBackupStrategy backupStrategy,
-        ProcessingCallbacks<RootedPath> callbacks) =>
-        AppendEntryList(TrackListDir.Combine(TrackListFileName), trdFileEntries, backupStrategy, callbacks);
 
     protected abstract RootedPath TrackListDir { get; }
 
@@ -205,32 +202,11 @@ public abstract class BaseModInstaller : IConfigurableInstaller
         return contents.Insert(endIndex, recordsTextBlock);
     }
 
-    private void AppendEntryList(
-        RootedPath filePath,
-        IEnumerable<string> entries,
-        IBackupStrategy backupStrategy,
-        ProcessingCallbacks<RootedPath> callbacks)
-    {
-        var entriesBlock = string.Join(Environment.NewLine, entries);
-        if (entriesBlock.Length == 0)
-        {
-            return;
-        }
-
-        var contents = WrapConfigBlock(entriesBlock);
-
-        SafeAppendAllText(filePath, contents, backupStrategy, callbacks);
-    }
-
     protected virtual string WrapConfigBlock(string configBlock) => configBlock;
 
     protected void SafeWriteAllText(RootedPath filePath, string contents,
         IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
         SafeFileOperation(FileSystem.File.WriteAllText, filePath, contents, backupStrategy, callbacks);
-
-    protected void SafeAppendAllText(RootedPath filePath, string contents,
-        IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
-        SafeFileOperation(FileSystem.File.AppendAllText, filePath, contents, backupStrategy, callbacks);
 
     private void SafeFileOperation(Action<string, string> fileOperation, RootedPath filePath,
         string contents, IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)

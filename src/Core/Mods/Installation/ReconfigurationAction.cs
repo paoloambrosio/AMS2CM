@@ -1,11 +1,13 @@
 using System.Collections.Immutable;
+using Core.Mods.Installation.Installers;
+using Core.Packages.Installation;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
 
-namespace Core.Packages.Installation;
+namespace Core.Mods.Installation;
 
-internal sealed class ConfigurationAction<TEventHandler>(
-    IConfigurableInstaller installer,
+internal sealed class ReconfigurationAction<TEventHandler>(
+    IReconfigurableInstaller installer,
     Func<PackageInstallationState?> currentState,
     ReconciliationAction<TEventHandler>.Factory factory) : IReconciliationAction
     where TEventHandler : IReconciliationContext.IEventHandler
@@ -27,7 +29,7 @@ internal sealed class ConfigurationAction<TEventHandler>(
     public void Execute(ProcessingCallbacks<RootedPath> callbacks)
     {
         original = currentState();
-        installer.Configure(factory.BackupStrategyProvider.BackupStrategy(InstallTime, factory.EventHandler), callbacks);
+        installer.Reconfigure(factory.BackupStrategyProvider.BackupStrategy(InstallTime, factory.EventHandler), callbacks);
         complete = true;
     }
 }

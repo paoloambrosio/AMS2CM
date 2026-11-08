@@ -135,7 +135,7 @@ public class PackageReconciliationContext<TEventHandler>(
         state.ShadowedBy.Intersect(toUninstall).Any() ||
         (state.ShadowedBy.Count > 0 && !state.ShadowedBy.Any(processed.Contains));
 
-    protected void ExecuteAction(IReconciliationAction action)
+    protected void ExecuteAction(IReconciliationAction action, bool allowUpdatingOwnedFiles = false)
     {
         if (action.InstallState == IInstallation.State.NotInstalled)
         {
@@ -148,7 +148,7 @@ public class PackageReconciliationContext<TEventHandler>(
             {
                 var shadowingPackageName = installedFiles.GetValueOrDefault(gamePath);
                 if (shadowingPackageName is null ||
-                    (shadowingPackageName == action.PackageName && action is ConfigurationAction<TEventHandler>))
+                    (shadowingPackageName == action.PackageName && allowUpdatingOwnedFiles))
                 {
                     return true;
                 }
