@@ -51,13 +51,10 @@ public sealed class ReconciliationService<TEventHandler>(
 
 public static class ReconciliationService
 {
-    public interface IEventHandler : IProgress, IBackupEventHandler
+    public interface IEventHandler : IProgress, IReconciliationContext.IEventHandler
     {
         void ReconciliationNoPackages();
         void ReconciliationStart();
-        void InstallingPackage(string packageName);
-        void SkippingPackage(string packageName);
-        void UninstallingPackage(string packageName);
         void ReconciliationEnd();
     }
 

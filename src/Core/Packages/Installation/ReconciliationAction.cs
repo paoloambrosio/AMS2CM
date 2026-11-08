@@ -20,7 +20,7 @@ public interface IReconciliationAction
 }
 
 internal abstract class ReconciliationAction<TEventHandler>
-    where TEventHandler : ReconciliationService.IEventHandler
+    where TEventHandler : IReconciliationContext.IEventHandler
 {
     public class Factory(
         IDirectoryInfo installDir,

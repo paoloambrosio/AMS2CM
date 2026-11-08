@@ -8,7 +8,7 @@ namespace Core.Packages.Installation;
 
 public class PackageReconciliationContext<TEventHandler>(
     IReadOnlyDictionary<string, PackageInstallationState> currentState) : IReconciliationContext<TEventHandler>
-    where TEventHandler : ReconciliationService.IEventHandler
+    where TEventHandler : IReconciliationContext.IEventHandler
 {
     public static IReconciliationContext<TEventHandler>.FactoryFunc Factory() =>
         currentState => new PackageReconciliationContext<TEventHandler>(currentState);

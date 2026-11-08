@@ -3,7 +3,7 @@ using Core.Packages.Installation.Backup;
 
 namespace Core.Packages.Installation;
 
-public interface IReconciliationContext<TEventHandler> where TEventHandler : ReconciliationService.IEventHandler
+public interface IReconciliationContext<TEventHandler> where TEventHandler : IReconciliationContext.IEventHandler
 {
     public delegate IReconciliationContext<TEventHandler> FactoryFunc(
         IReadOnlyDictionary<string, PackageInstallationState> currentState);
@@ -13,4 +13,14 @@ public interface IReconciliationContext<TEventHandler> where TEventHandler : Rec
     IReadOnlyCollection<Action> ReconciliationActions(IEnumerable<IPackage> packages,
         IDirectoryInfo installDir, IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
         TEventHandler eventHandler);
+}
+
+public interface IReconciliationContext
+{
+    public interface IEventHandler : IBackupEventHandler
+    {
+        void InstallingPackage(string packageName);
+        void SkippingPackage(string packageName);
+        void UninstallingPackage(string packageName);
+    }
 }

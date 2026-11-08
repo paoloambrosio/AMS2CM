@@ -8,7 +8,7 @@ internal sealed class ConfigurationAction<TEventHandler>(
     IConfigurableInstaller installer,
     Func<PackageInstallationState?> currentState,
     ReconciliationAction<TEventHandler>.Factory factory) : IReconciliationAction
-    where TEventHandler : ReconciliationService.IEventHandler
+    where TEventHandler : IReconciliationContext.IEventHandler
 {
     private PackageInstallationState? original;
     private bool complete;
