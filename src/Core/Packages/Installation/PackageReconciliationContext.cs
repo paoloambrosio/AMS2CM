@@ -37,8 +37,23 @@ public class PackageReconciliationContext<TEventHandler>(
         PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
         var joinedState = JoinPreviousState(inputs.PlanningState, inputs.Installers);
-        return CreateActions(joinedState, actionFactory)
-            .Select(action => new SingleActionBatch(action)).ToArray();
+        HashSet<string> processed = [];
+        HashSet<string> toUninstall = [];
+        List<IReconciliationBatch> batches = [];
+        foreach (var (packageName, (state, installer)) in joinedState)
+        {
+            processed.Add(packageName);
+            var uninstall = state is not null && ShouldUninstall(state, installer, toUninstall, processed);
+            if (uninstall)
+            {
+                toUninstall.Add(packageName);
+            }
+
+            // Decide replacements from the original plan, but resolve ownership after earlier batches.
+            batches.Add(new DeferredReconciliationBatch(() =>
+                ResolveActions(packageName, state, installer, uninstall, actionFactory)));
+        }
+        return batches;
     }
 
     protected virtual PlanningInputs CreatePlanningInputs(IEnumerable<IPackage> packages,
@@ -78,40 +93,31 @@ public class PackageReconciliationContext<TEventHandler>(
         return new ReconciliationAction<TEventHandler>.Factory(installDir, trackingBackupProvider, eventHandler);
     }
 
-    private static IReadOnlyCollection<IReconciliationAction> CreateActions(
-        OrderedDictionary<string, (PackageInstallationState?, IPackageInstaller?)> joinedState,
+    private List<IReconciliationAction> ResolveActions(
+        string packageName, PackageInstallationState? state, IPackageInstaller? installer, bool uninstall,
         ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
-        HashSet<string> processed = [];
-        HashSet<string> toUninstall = [];
-        var uninstallActions = new List<IReconciliationAction>();
-        var installOrKeepActions = new List<IReconciliationAction>();
-        foreach (var (packageName, (state, installer)) in joinedState)
+        if (state is not null)
         {
-            processed.Add(packageName);
-
-            if (state is not null && ShouldUninstall(state, installer, toUninstall, processed))
-            {
-                uninstallActions.Add(actionFactory.Uninstall(packageName, state));
-                toUninstall.Add(packageName);
-            }
-
-            if (installer is null)
-            {
-                continue;
-            }
-
-            if (state is null || toUninstall.Contains(packageName))
-            {
-                installOrKeepActions.Add(actionFactory.Install(installer));
-            }
-            else
-            {
-                installOrKeepActions.Add(actionFactory.Keep(packageName, state));
-            }
+            var ownership = currentState[packageName];
+            // Keep planning metadata, including remapped bootfiles dependencies.
+            state = state with { Files = ownership.Files, ShadowedBy = ownership.ShadowedBy };
         }
-
-        return [.. uninstallActions, .. installOrKeepActions];
+        List<IReconciliationAction> actions = [];
+        if (uninstall && state is not null)
+        {
+            actions.Add(actionFactory.Uninstall(packageName, state));
+        }
+        if (installer is null) return actions;
+        if (state is null || uninstall)
+        {
+            actions.Add(actionFactory.Install(installer));
+        }
+        else
+        {
+            actions.Add(actionFactory.Keep(packageName, state));
+        }
+        return actions;
     }
 
     private static bool ShouldUninstall(PackageInstallationState state, IPackageInstaller? installer,
