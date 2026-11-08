@@ -68,8 +68,8 @@ public class ReconciliationServiceTest
         ExpectProgress(0.66);
         ExpectActionExecuted(actions[2]);
         ExpectProgress(1.00);
-        ExpectStateSaved();
         events.InSequence(sequence).Setup(e => e.ReconciliationEnd());
+        ExpectStateSaved();
 
         Reconcile();
 

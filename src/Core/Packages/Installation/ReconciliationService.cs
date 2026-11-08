@@ -26,32 +26,25 @@ public sealed class ReconciliationService<TEventHandler>(
             return;
         }
 
-        eventHandler.ReconciliationStart();
         try
         {
-            Execute(actions, eventHandler, cancellationToken);
+            eventHandler.ReconciliationStart();
+            var progress = new PercentOfTotal(actions.Count);
+            foreach (var action in actions)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                action();
+                eventHandler.ProgressUpdate(progress.IncrementDone());
+            }
+            eventHandler.ReconciliationEnd();
         }
         finally
         {
             afterInstall(context.CurrentState);
-        }
-        eventHandler.ReconciliationEnd();
-    }
-
-    private static void Execute(IReadOnlyCollection<Action> actions,
-        TEventHandler eventHandler,
-        CancellationToken cancellationToken)
-    {
-        var progress = new PercentOfTotal(actions.Count);
-        foreach (var action in actions)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            action();
-            eventHandler.ProgressUpdate(progress.IncrementDone());
         }
     }
 }
