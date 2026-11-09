@@ -34,10 +34,11 @@ public abstract class BaseModInstaller : IReconfigurableInstaller
     private bool postProcessingDone;
 
     private readonly HashSet<RootedPath> localInstalledFiles = [];
+    private HashSet<RootedPath>? reconfiguredFiles;
 
-    protected void RecordInstalledFile(RootedPath path) => localInstalledFiles.Add(path);
+    protected void RecordInstalledFile(RootedPath path) => (reconfiguredFiles ?? localInstalledFiles).Add(path);
 
-    protected void ForgetInstalledFile(RootedPath path) => localInstalledFiles.Remove(path);
+    protected void ForgetInstalledFile(RootedPath path) => (reconfiguredFiles ?? localInstalledFiles).Remove(path);
 
     protected BaseModInstaller(IPackageInstaller inner, IDirectoryInfo tempDir, IConfig config)
     {
@@ -61,13 +62,15 @@ public abstract class BaseModInstaller : IReconfigurableInstaller
     public abstract IReadOnlySet<string> PackageDependencies { get; }
 
     public IReadOnlySet<RootedPath> InstalledFiles =>
-        Inner.InstalledFiles
+        reconfiguredFiles is not null ? reconfiguredFiles : Inner.InstalledFiles
             .Concat(localInstalledFiles)
             .Where(RootIsNotStagingDir)
             .ToImmutableHashSet();
 
     public IInstallation.State Installed =>
-        Inner.Installed == IInstallation.State.Installed && !postProcessingDone
+        reconfiguredFiles is not null
+            ? postProcessingDone ? IInstallation.State.Installed : IInstallation.State.PartiallyInstalled
+            : Inner.Installed == IInstallation.State.Installed && !postProcessingDone
             ? IInstallation.State.PartiallyInstalled
             : Inner.Installed;
 
@@ -92,7 +95,16 @@ public abstract class BaseModInstaller : IReconfigurableInstaller
     public IEnumerable<string> RelativeDirectoryPaths =>
         Inner.RelativeDirectoryPaths.SelectNotNull(rootPaths.Value.GetPathFromRoot);
 
-    public abstract void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
+    public void Reconfigure(IReadOnlySet<RootedPath> installedFiles, IBackupStrategy backupStrategy,
+        ProcessingCallbacks<RootedPath> callbacks)
+    {
+        reconfiguredFiles = [.. installedFiles.Where(RootIsNotStagingDir)];
+        postProcessingDone = false;
+        Reconfigure(backupStrategy, callbacks);
+        postProcessingDone = true;
+    }
+
+    protected abstract void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
 
     protected abstract void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
 
@@ -223,7 +235,7 @@ public abstract class BaseModInstaller : IReconfigurableInstaller
 
             fileOperation(fullFilePath, contents);
             backupStrategy.AfterInstall(filePath);
-            localInstalledFiles.Add(filePath);
+            RecordInstalledFile(filePath);
         }, filePath);
     }
 }

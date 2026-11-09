@@ -6,5 +6,6 @@ namespace Core.Mods.Installation.Installers;
 
 public interface IReconfigurableInstaller : IPackageInstaller
 {
-    void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks);
+    void Reconfigure(IReadOnlySet<RootedPath> installedFiles, IBackupStrategy backupStrategy,
+        ProcessingCallbacks<RootedPath> callbacks);
 }

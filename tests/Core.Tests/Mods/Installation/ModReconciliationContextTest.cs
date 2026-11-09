@@ -19,6 +19,7 @@ public class ModReconciliationContextTest :
     #region Setup
 
     private readonly Mock<Action> configure = new();
+    private Mock<Action> configureMod = new();
 
     private const string GeneratedBootfilesName = "__generated";
     private const string BootfilesPackageName = "__package";
@@ -35,61 +36,78 @@ public class ModReconciliationContextTest :
         }
     }
 
-    private sealed class TestModReconciliationContext(
-        IReadOnlyDictionary<string, PackageInstallationState> previousState,
-        IBootfilesNaming bootfilesNaming,
-        ModReconciliationContextTest test)
-        : ModReconciliationContext<ModReconciliationContext.IEventHandler, ModInstallConfig>(previousState,
-            Mock.Of<IGame>(), Mock.Of<ITempDir>(), bootfilesNaming, new ModInstallConfig())
-    {
-        protected override IPackageInstaller CreateModInstaller(IPackageInstaller packageInstaller,
-            IPackageInstaller bootfilesInstaller) =>
-            new Dictionary<string, IPackageInstaller>
-            {
-                [ModRequiringBootfiles] = new InstallerWithBootfilesDependency(packageInstaller, bootfilesInstaller)
-            }.GetValueOrDefault(packageInstaller.PackageName, packageInstaller);
-        protected override IPackageInstaller CreateBootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
-            ModReconciliationContext.IEventHandler eventHandler) =>
-            new ConfigurableInstaller(bootfilesPackageInstaller ?? test.Installer(GeneratedBootfilesName), test.configure.Object);
-    }
-
-    private class InstallerWithBootfilesDependency(IPackageInstaller inner, IPackageInstaller bootfiles)
-        : IPackageInstaller
-    {
-        public string PackageName => inner.PackageName;
-        public int? PackageVersionHash => inner.PackageVersionHash;
-
-        public IReadOnlySet<string> PackageDependencies =>
-            inner.PackageDependencies.Append(bootfiles.PackageName).ToHashSet();
-
-        public IReadOnlySet<RootedPath> InstalledFiles => inner.InstalledFiles;
-        public IInstallation.State Installed => inner.Installed;
-        public DateTimeOffset InstallTime => inner.InstallTime;
-
-        public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
-            ProcessingCallbacks<RootedPath> callbacks) => inner.Install(destination, backupStrategy, callbacks);
-
-        public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
-    }
-
-    private sealed class ConfigurableInstaller(IPackageInstaller inner, Action configure) : IReconfigurableInstaller
-    {
-        public string PackageName => inner.PackageName;
-        public int? PackageVersionHash => inner.PackageVersionHash;
-        public IReadOnlySet<string> PackageDependencies => inner.PackageDependencies;
-        public IReadOnlySet<RootedPath> InstalledFiles => inner.InstalledFiles;
-        public IInstallation.State Installed => inner.Installed;
-        public DateTimeOffset InstallTime => inner.InstallTime;
-        public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
-        public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
-            ProcessingCallbacks<RootedPath> callbacks)
-        {
-            inner.Install(destination, backupStrategy, callbacks);
-            configure();
-        }
-        public void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) => configure();
-    }
     #endregion
+
+    [Fact]
+    public void RetainedModIsConfiguredAfterKeep()
+    {
+        Reconcile([Package("Mod", 1)]);
+        configureMod = new Mock<Action>(MockBehavior.Strict);
+        var sequence = new MockSequence();
+        var events = new Mock<ModReconciliationContext.IEventHandler>(MockBehavior.Strict);
+        events.InSequence(sequence).Setup(e => e.SkippingPackage("Mod"));
+        configureMod.InSequence(sequence).Setup(c => c());
+
+        Reconcile([Package("Mod", 1)], events.Object);
+
+        configureMod.Verify(c => c(), Times.Once);
+        events.Verify(e => e.SkippingPackage("Mod"), Times.Once);
+    }
+
+    [Fact]
+    public void RetainedModWithReusedInstallerIsReconfigured()
+    {
+        var package = Package("Mod", 1);
+        Reconcile([package]);
+        configureMod.Invocations.Clear();
+
+        Reconcile([package]);
+
+        configureMod.Verify(c => c(), Times.Once);
+    }
+
+    [Fact]
+    public void NewModIsConfiguredOnce()
+    {
+        Reconcile([Package("Mod", 1)]);
+
+        configureMod.Verify(c => c(), Times.Once);
+    }
+
+    [Fact]
+    public void ReplacedModIsConfiguredOnce()
+    {
+        Reconcile([Package("Mod", 1)]);
+        configureMod.Invocations.Clear();
+
+        Reconcile([Package("Mod", 2)]);
+
+        configureMod.Verify(c => c(), Times.Once);
+    }
+
+    [Fact]
+    public void RemovedModIsNotConfigured()
+    {
+        Reconcile([Package("Mod", 1)]);
+        configureMod.Invocations.Clear();
+
+        Reconcile([]);
+
+        configureMod.Verify(c => c(), Times.Never);
+    }
+
+    [Fact]
+    public void FailedKeepDoesNotConfigureMod()
+    {
+        Reconcile([Package("Mod", 1)]);
+        configureMod.Invocations.Clear();
+        EventHandlerMock.Setup(e => e.SkippingPackage("Mod")).Throws(new IOException("Keep failed"));
+
+        var reconcile = () => Reconcile([Package("Mod", 1)]);
+
+        reconcile.Should().Throw<IOException>().WithMessage("Keep failed");
+        configureMod.Verify(c => c(), Times.Never);
+    }
 
     [Fact]
     public void Reconcile_InstallsGeneratedBootfilesIfModRequiresThem()
@@ -155,7 +173,7 @@ public class ModReconciliationContextTest :
 
         Reconcile([
             Package(ModRequiringBootfiles, versionHash: 3, files: ["F3"]),
-            Package("Untouched", versionHash: 2, files: FilesNotUsed)
+            Package("Untouched", versionHash: 2, files: FilesNotUsed, dependencies: [GeneratedBootfilesName])
         ]);
 
         EventHandlerMock.Verify(m => m.UninstallingPackage(ModRequiringBootfiles));
@@ -244,7 +262,9 @@ public class ModReconciliationContextTest :
 
         reconcile.Should().Throw<IOException>();
         InstallationState[BootfilesPackageName].Should().BeEquivalentTo(original with { Partial = true });
-    }    [Fact]
+    }
+
+    [Fact]
     public void UnknownBootfilesVersionIsReinstalledOnce()
     {
         Reconcile([Package(ModRequiringBootfiles, 1), Package(BootfilesPackageName, 1)]);
@@ -314,4 +334,81 @@ public class ModReconciliationContextTest :
 
         InstallationState[BootfilesPackageName].Files.Should().NotContain("Shared");
         InstallationState[BootfilesPackageName].ShadowedBy.Should().Contain(ModRequiringBootfiles);
-    }}
+    }
+
+    #region Utility Methods
+
+    private sealed class TestModReconciliationContext(
+        IReadOnlyDictionary<string, PackageInstallationState> previousState,
+        IBootfilesNaming bootfilesNaming,
+        ModReconciliationContextTest test)
+        : ModReconciliationContext<ModReconciliationContext.IEventHandler, ModInstallConfig>(previousState,
+            Mock.Of<IGame>(), Mock.Of<ITempDir>(), bootfilesNaming, new ModInstallConfig())
+    {
+        protected override IReconfigurableInstaller CreateModInstaller(IPackageInstaller packageInstaller,
+            IPackageInstaller bootfilesInstaller) =>
+            new ConfigurableInstaller(new Dictionary<string, IPackageInstaller>
+            {
+                [ModRequiringBootfiles] = new InstallerWithBootfilesDependency(packageInstaller, bootfilesInstaller)
+            }.GetValueOrDefault(packageInstaller.PackageName, packageInstaller), test.configureMod.Object);
+        protected override IBootfilesInstaller CreateBootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
+            ModReconciliationContext.IEventHandler eventHandler) =>
+            new TestBootfilesInstaller(bootfilesPackageInstaller ?? test.Installer(GeneratedBootfilesName), test.configure.Object);
+    }
+
+    private class InstallerWithBootfilesDependency(IPackageInstaller inner, IPackageInstaller bootfiles)
+        : IPackageInstaller
+    {
+        public string PackageName => inner.PackageName;
+        public int? PackageVersionHash => inner.PackageVersionHash;
+
+        public IReadOnlySet<string> PackageDependencies =>
+            inner.PackageDependencies.Append(bootfiles.PackageName).ToHashSet();
+
+        public IReadOnlySet<RootedPath> InstalledFiles => inner.InstalledFiles;
+        public IInstallation.State Installed => inner.Installed;
+        public DateTimeOffset InstallTime => inner.InstallTime;
+
+        public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
+            ProcessingCallbacks<RootedPath> callbacks) => inner.Install(destination, backupStrategy, callbacks);
+
+        public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
+    }
+
+    private class ConfigurableInstaller(IPackageInstaller inner, Action configure) : IReconfigurableInstaller
+    {
+        private IReadOnlySet<RootedPath>? ownedFiles;
+        public string PackageName => inner.PackageName;
+        public int? PackageVersionHash => inner.PackageVersionHash;
+        public IReadOnlySet<string> PackageDependencies => inner.PackageDependencies;
+        public IReadOnlySet<RootedPath> InstalledFiles => ownedFiles ?? inner.InstalledFiles;
+        public IInstallation.State Installed { get; private set; } = IInstallation.State.NotInstalled;
+        public DateTimeOffset InstallTime => inner.InstallTime;
+        public IEnumerable<string> RelativeDirectoryPaths => inner.RelativeDirectoryPaths;
+        public void Install(IInstaller.Destination destination, IBackupStrategy backupStrategy,
+            ProcessingCallbacks<RootedPath> callbacks)
+        {
+            Installed = IInstallation.State.PartiallyInstalled;
+            inner.Install(destination, backupStrategy, callbacks);
+            configure();
+            Installed = IInstallation.State.Installed;
+        }
+        public void Reconfigure(IReadOnlySet<RootedPath> installedFiles, IBackupStrategy backupStrategy,
+            ProcessingCallbacks<RootedPath> callbacks)
+        {
+            Installed = IInstallation.State.PartiallyInstalled;
+            ownedFiles = installedFiles;
+            configure();
+            Installed = IInstallation.State.Installed;
+        }
+    }
+
+    private sealed class TestBootfilesInstaller(IPackageInstaller inner, Action configure)
+        : ConfigurableInstaller(inner, configure), IBootfilesInstaller
+    {
+        public void NotRequired() { }
+        public void SelectSources(IReadOnlyDictionary<string, PackageInstallationState> state) { }
+        public void Prepare(IReadOnlyDictionary<string, PackageInstallationState> state) { }
+    }
+    #endregion
+}

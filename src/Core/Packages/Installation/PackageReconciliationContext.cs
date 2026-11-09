@@ -23,6 +23,8 @@ public class PackageReconciliationContext<TEventHandler>(
         IReadOnlyList<IPackageInstaller> Installers,
         IReadOnlyDictionary<string, PackageInstallationState> PlanningState);
 
+    private protected sealed record PackageAction(string PackageName, Action Execute);
+
     public IReadOnlyCollection<Action> ReconciliationActions(IEnumerable<IPackage> packages,
         IDirectoryInfo installDir,
         IBackupStrategyProvider<DateTimeOffset, TEventHandler> backupStrategyProvider,
@@ -34,12 +36,16 @@ public class PackageReconciliationContext<TEventHandler>(
     }
 
     private protected virtual IReadOnlyCollection<Action> CreateActions(
+        PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory) =>
+        CreatePackageActions(inputs, actionFactory).Select(action => action.Execute).ToArray();
+
+    private protected IReadOnlyCollection<PackageAction> CreatePackageActions(
         PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
         var joinedState = JoinPreviousState(inputs.PlanningState, inputs.Installers);
         HashSet<string> processed = [];
         HashSet<string> toUninstall = [];
-        List<Action> actions = [];
+        List<PackageAction> actions = [];
         foreach (var (packageName, (state, installer)) in joinedState)
         {
             processed.Add(packageName);
@@ -50,13 +56,13 @@ public class PackageReconciliationContext<TEventHandler>(
             }
 
             // Decide replacements from the original plan, but resolve ownership after earlier actions.
-            actions.Add(() =>
+            actions.Add(new PackageAction(packageName, () =>
             {
                 foreach (var action in ResolveActions(packageName, state, installer, uninstall, actionFactory))
                 {
                     ExecuteAction(action);
                 }
-            });
+            }));
         }
         return actions;
     }
@@ -194,6 +200,12 @@ public class PackageReconciliationContext<TEventHandler>(
     {
         var files = action.InstalledFiles;
         var packageName = action.PackageName;
+        foreach (var path in installedFiles.Where(p => p.Value == packageName &&
+                     !files.Contains(p.Key.Relative, StringComparer.OrdinalIgnoreCase))
+                     .Select(p => p.Key).ToArray())
+        {
+            installedFiles.Remove(path);
+        }
         if (files.Count == 0)
         {
             currentState.Remove(packageName);

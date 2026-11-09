@@ -7,7 +7,14 @@ using Core.Utils;
 
 namespace Core.Mods.Installation.Installers;
 
-public class BootfilesInstaller : BaseModInstaller
+public interface IBootfilesInstaller : IReconfigurableInstaller
+{
+    void NotRequired();
+    void SelectSources(IReadOnlyDictionary<string, PackageInstallationState> state);
+    void Prepare(IReadOnlyDictionary<string, PackageInstallationState> state);
+}
+
+public class BootfilesInstaller : BaseModInstaller, IBootfilesInstaller
 {
     public new interface IConfig : BaseModInstaller.IConfig
     {
@@ -88,7 +95,8 @@ public class BootfilesInstaller : BaseModInstaller
     protected override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
         Reconfigure(backupStrategy, callbacks);
 
-    public override void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks)
+    protected override void Reconfigure(IBackupStrategy backupStrategy,
+        ProcessingCallbacks<RootedPath> callbacks)
     {
         eventHandler.PostProcessingStart();
         Configure(backupStrategy, callbacks, CollectModConfig());

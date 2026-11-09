@@ -117,7 +117,8 @@ public class BaseModInstallerTest
         protected override void Configure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
             configure();
 
-        public override void Reconfigure(IBackupStrategy backupStrategy, ProcessingCallbacks<RootedPath> callbacks) =>
+        protected override void Reconfigure(IBackupStrategy backupStrategy,
+            ProcessingCallbacks<RootedPath> callbacks) =>
             configure();
     }
 

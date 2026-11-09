@@ -245,7 +245,7 @@ public class ModInstallerTest
         var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [trackFile]));
 
         installer.Should().BeAssignableTo<IReconfigurableInstaller>().Which
-            .Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+            .Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.ReadAllText(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod_1", TrackListFile))
             .Should().Be(Path.Combine(GameDirAtRoot, "@Track.trd"));
@@ -260,7 +260,7 @@ public class ModInstallerTest
         backupStrategyMock.Invocations.Clear();
         callbackMock.Invocations.Clear();
 
-        installer.Reconfigure(backupStrategyMock.Object,
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object,
             new ProcessingCallbacks<RootedPath> { Before = callbackMock.Object });
 
         backupStrategyMock.VerifyNoOtherCalls();
@@ -275,7 +275,7 @@ public class ModInstallerTest
         var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [removed, remaining]));
         fs.File.Delete(destinationRoot.Combine(removed).Full);
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.ReadAllText(destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile).Full)
             .Should().Be(remaining);
@@ -289,7 +289,7 @@ public class ModInstallerTest
         var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", TrackListFile);
         fs.File.Delete(destinationRoot.Combine(track).Full);
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.Exists(list.Full).Should().BeFalse();
         installer.InstalledFiles.Should().NotContain(list);
@@ -306,7 +306,7 @@ public class ModInstallerTest
         fs.File.Delete(destinationRoot.Combine(track).Full);
         backupStrategyMock.Setup(b => b.RestoreBackup(list)).Throws(new IOException("Removal failed"));
 
-        var reconfigure = () => installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var reconfigure = () => installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         reconfigure.Should().Throw<IOException>().WithMessage("Removal failed");
         installer.InstalledFiles.Should().Contain(list);
@@ -331,17 +331,16 @@ public class ModInstallerTest
     }
 
     [Fact]
-    public void ReconfigurationRestoresOriginalListContents()
+    public void ReconfigurationReplacesExistingListContents()
     {
         var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
         var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile);
         fs.AddFile(list.Full, "Original\r\n");
         var installer = InstallWithModInstaller(InstallerOf("Mod", 1, [vehicle]));
-        fs.File.Delete(destinationRoot.Combine(vehicle).Full);
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
-        fs.File.ReadAllText(list.Full).Should().Be("Original\r\n");
+        fs.File.ReadAllText(list.Full).Should().Be(vehicle);
     }
 
     [Fact]
@@ -358,7 +357,7 @@ public class ModInstallerTest
         fs.File.Delete(destinationRoot.Combine(vehicle).Full);
         backupStrategyMock.Invocations.Clear();
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.ReadAllText(driveline.Full).Should().Be("RECORD Example");
         installer.InstalledFiles.Should().Contain(driveline);
@@ -375,7 +374,7 @@ public class ModInstallerTest
             [track, Path.Combine(GameDirAtRoot, "Vehicle.crd")]));
         fs.File.Delete(destinationRoot.Combine(track).Full);
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.ReadAllText(destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", "Mod_1.xml").Full)
             .Should().Be(installer.ModManifest);
@@ -390,14 +389,14 @@ public class ModInstallerTest
         var manifest = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", "Mod_1.xml");
         fs.File.Delete(destinationRoot.Combine(vehicle).Full);
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.Exists(manifest.Full).Should().BeFalse();
         installer.InstalledFiles.Should().NotContain(manifest);
     }
 
     [Fact]
-    public void ReconfigurationRetriesFailedListUpdateFromOriginalContents()
+    public void ReconfigurationRetriesFailedListUpdate()
     {
         var vehicle = Path.Combine(GameDirAtRoot, "Vehicle.crd");
         var list = destinationRoot.Combine(GameSupportedModDirectory, "Mod_1", VehicleListFile);
@@ -411,9 +410,9 @@ public class ModInstallerTest
             new ProcessingCallbacks<RootedPath>());
         install.Should().Throw<IOException>();
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
-        fs.File.ReadAllText(list.Full).Should().Be("Original\r\n" + vehicle);
+        fs.File.ReadAllText(list.Full).Should().Be(vehicle);
     }
 
     [Fact]

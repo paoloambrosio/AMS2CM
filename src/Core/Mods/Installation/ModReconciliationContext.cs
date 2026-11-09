@@ -1,7 +1,6 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using Core.Games;
 using Core.Mods.Installation.Installers;
-using Core.Packages;
 using Core.Packages.Installation;
 using Core.Packages.Installation.Installers;
 using Core.Utils;
@@ -25,89 +24,137 @@ public class ModReconciliationContext<TEventHandler, TConfig>(
         new ModReconciliationContext<TEventHandler, TConfig>(
             previousState, game, tempDir, bootfilesNaming, config);
 
-    protected override PlanningInputs CreatePlanningInputs(IEnumerable<IPackage> packages,
-        TEventHandler eventHandler)
+    private protected override IReadOnlyCollection<Action> CreateActions(
+        PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
     {
-        var inputs = base.CreatePlanningInputs(packages, eventHandler);
-        var (bootfiles, notBootfiles) = inputs.Installers.ToImmutableArray()
+        var (bootfilesPackages, notBootfiles) = inputs.Installers.ToImmutableArray()
             .Partition(p => bootfilesNaming.IsBootfiles(p.PackageName));
-        var bootfilesInstaller = CreateBootfilesInstaller(bootfiles.FirstOrDefault(), eventHandler);
+        var bootfiles = CreateBootfilesInstaller(bootfilesPackages.FirstOrDefault(), actionFactory.EventHandler);
 
+        var modActions = CreateModActions(inputs, actionFactory, notBootfiles, bootfiles);
+        return [.. modActions, () => ReconcileBootfiles(inputs, actionFactory, bootfiles)];
+    }
+
+    private IEnumerable<Action> CreateModActions(PlanningInputs inputs,
+        ReconciliationAction<TEventHandler>.Factory actionFactory,
+        IEnumerable<IPackageInstaller> notBootfiles, IBootfilesInstaller bootfiles)
+    {
         var modInstallers = notBootfiles
-            .Select(i => CreateModInstaller(i, bootfilesInstaller))
-            .Append(bootfilesInstaller);
+            .Select(i => CreateModInstaller(i, bootfiles))
+            .ToArray();
+        var installersByName = modInstallers.ToDictionary(i => i.PackageName);
 
-        var planningState = inputs.PlanningState
+        var planningState = RemapBootfilesDependencies(inputs, bootfiles);
+
+        var ordinaryInputs = new PlanningInputs(modInstallers,
+            planningState.Where(p => p.Key != bootfiles.PackageName).ToDictionary());
+        return CreatePackageActions(ordinaryInputs, actionFactory)
+            .Select(packageAction => (Action)(() => ReconcileMod(packageAction, installersByName, actionFactory)));
+    }
+
+    private void ReconcileMod(PackageAction packageAction,
+        Dictionary<string, IReconfigurableInstaller> installersByName,
+        ReconciliationAction<TEventHandler>.Factory actionFactory)
+    {
+        packageAction.Execute();
+        if (installersByName.TryGetValue(packageAction.PackageName, out var installer) &&
+            installer.Installed != IInstallation.State.Installed &&
+            CurrentState.ContainsKey(installer.PackageName))
+        {
+            Reconfigure(actionFactory, installer);
+        }
+    }
+
+    private IReadOnlyDictionary<string, PackageInstallationState> RemapBootfilesDependencies(
+        PlanningInputs inputs, IBootfilesInstaller bootfiles) =>
+        inputs.PlanningState
             .SelectValues(s => s with
             {
                 Dependencies = s.Dependencies
-                    .Select(d => bootfilesNaming.IsBootfiles(d) ? bootfilesInstaller.PackageName : d)
+                    .Select(d => bootfilesNaming.IsBootfiles(d) ? bootfiles.PackageName : d)
                     .ToArray()
             });
 
-        return new PlanningInputs(modInstallers.ToArray(), planningState);
+    private void ReconcileBootfiles(PlanningInputs inputs,
+        ReconciliationAction<TEventHandler>.Factory actionFactory, IBootfilesInstaller bootfiles)
+    {
+        var state = CurrentState.GetValueOrDefault(bootfiles.PackageName);
+        if (!BootfilesRequired(bootfiles))
+        {
+            RemoveBootfiles(actionFactory, bootfiles, state);
+            return;
+        }
+
+        bootfiles.SelectSources(CurrentState);
+        var reinstall = RequiresBootfilesReinstall(inputs, bootfiles, state);
+        if (reinstall)
+        {
+            bootfiles.Prepare(CurrentState);
+        }
+
+        var actions = CreateBootfilesActions(actionFactory, bootfiles, reinstall, state);
+        foreach (var action in actions)
+        {
+            ExecuteAction(action);
+        }
+        if (!reinstall)
+        {
+            Reconfigure(actionFactory, bootfiles);
+        }
     }
 
-    protected virtual IPackageInstaller CreateModInstaller(IPackageInstaller packageInstaller,
+    private bool BootfilesRequired(IBootfilesInstaller bootfiles) =>
+        CurrentState.Any(p => p.Key != bootfiles.PackageName &&
+            p.Value.Dependencies.Contains(bootfiles.PackageName));
+
+    private void RemoveBootfiles(ReconciliationAction<TEventHandler>.Factory actionFactory,
+        IBootfilesInstaller bootfiles, PackageInstallationState? state)
+    {
+        bootfiles.NotRequired();
+        if (state is not null)
+        {
+            ExecuteAction(actionFactory.Uninstall(bootfiles.PackageName, state));
+        }
+    }
+
+    private bool RequiresBootfilesReinstall(PlanningInputs inputs, IBootfilesInstaller bootfiles,
+        PackageInstallationState? state)
+    {
+        var previous = inputs.PlanningState.GetValueOrDefault(bootfiles.PackageName);
+        return state is null || state.Partial || state.VersionHash is null ||
+            bootfiles.PackageVersionHash is null || state.VersionHash != bootfiles.PackageVersionHash ||
+            state.ShadowedBy.Any(ReplacedPackages.Contains) ||
+            state.ShadowedBy.Any(p => !CurrentState.ContainsKey(p)) ||
+            (previous is not null && !previous.ShadowedBy.ToHashSet().SetEquals(state.ShadowedBy));
+    }
+
+    private static List<IReconciliationAction> CreateBootfilesActions(
+        ReconciliationAction<TEventHandler>.Factory actionFactory,
+        IBootfilesInstaller bootfiles, bool reinstall, PackageInstallationState? state)
+    {
+        List<IReconciliationAction> actions = [];
+        if (reinstall && state is not null)
+        {
+            actions.Add(actionFactory.Uninstall(bootfiles.PackageName, state));
+        }
+        actions.Add(reinstall || state is null
+            ? actionFactory.Install(bootfiles)
+            : actionFactory.Keep(bootfiles.PackageName, state));
+        return actions;
+    }
+
+    private void Reconfigure(ReconciliationAction<TEventHandler>.Factory actionFactory,
+        IReconfigurableInstaller installer) =>
+        ExecuteAction(new ReconfigurationAction<TEventHandler>(installer,
+                () => CurrentState.GetValueOrDefault(installer.PackageName), actionFactory),
+            allowUpdatingOwnedFiles: true);
+
+    protected virtual IReconfigurableInstaller CreateModInstaller(IPackageInstaller packageInstaller,
         IPackageInstaller bootfilesInstaller) =>
         new ModInstaller(packageInstaller, tempDir.BaseDirectory, config, game.InstallationDirectory,
             bootfilesInstaller.PackageName);
 
-    private protected override IReadOnlyCollection<Action> CreateActions(
-        PlanningInputs inputs, ReconciliationAction<TEventHandler>.Factory actionFactory)
-    {
-        var bootfiles = inputs.Installers[^1];
-        var ordinaryInputs = new PlanningInputs(inputs.Installers.SkipLast(1).ToArray(),
-            inputs.PlanningState.Where(p => p.Key != bootfiles.PackageName).ToDictionary());
-        return [.. base.CreateActions(ordinaryInputs, actionFactory), () =>
-        {
-            var state = CurrentState.GetValueOrDefault(bootfiles.PackageName);
-            var required = CurrentState.Any(p => p.Key != bootfiles.PackageName &&
-                p.Value.Dependencies.Contains(bootfiles.PackageName));
-            if (!required)
-            {
-                (bootfiles as BootfilesInstaller)?.NotRequired();
-                if (state is not null)
-                {
-                    ExecuteAction(actionFactory.Uninstall(bootfiles.PackageName, state));
-                }
-                return;
-            }
-
-            (bootfiles as BootfilesInstaller)?.SelectSources(CurrentState);
-            var previous = inputs.PlanningState.GetValueOrDefault(bootfiles.PackageName);
-            var reinstall = state is null || state.Partial || state.VersionHash is null ||
-                bootfiles.PackageVersionHash is null || state.VersionHash != bootfiles.PackageVersionHash ||
-                state.ShadowedBy.Any(ReplacedPackages.Contains) ||
-                state.ShadowedBy.Any(p => !CurrentState.ContainsKey(p)) ||
-                (previous is not null && !previous.ShadowedBy.ToHashSet().SetEquals(state.ShadowedBy));
-            if (reinstall)
-            {
-                (bootfiles as BootfilesInstaller)?.Prepare(CurrentState);
-            }
-
-            List<IReconciliationAction> actions = [];
-            if (reinstall && state is not null)
-            {
-                actions.Add(actionFactory.Uninstall(bootfiles.PackageName, state));
-            }
-            actions.Add(reinstall || state is null
-                ? actionFactory.Install(bootfiles)
-                : actionFactory.Keep(bootfiles.PackageName, state));
-            foreach (var action in actions)
-            {
-                ExecuteAction(action);
-            }
-            if (!reinstall && bootfiles is IReconfigurableInstaller configurable)
-            {
-                ExecuteAction(new ReconfigurationAction<TEventHandler>(configurable,
-                    () => CurrentState.GetValueOrDefault(bootfiles.PackageName), actionFactory),
-                    allowUpdatingOwnedFiles: true);
-            }
-        }];
-    }
-
-    protected virtual IPackageInstaller CreateBootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
+    protected virtual IBootfilesInstaller CreateBootfilesInstaller(IPackageInstaller? bootfilesPackageInstaller,
         TEventHandler eventHandler) =>
         new BootfilesInstaller(bootfilesPackageInstaller, tempDir.BaseDirectory, config,
             game.InstallationDirectory, bootfilesNaming, eventHandler);

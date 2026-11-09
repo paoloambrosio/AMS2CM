@@ -183,7 +183,7 @@ public class BootfilesInstallerTest
         fs.AddFile(Path.Combine(destinationPath, GameSupportedModDirectory, "Mod", VehicleListFileName), "Vehicle.crd");
         var installer = CreateBootfiles();
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         installer.Should().BeAssignableTo<IReconfigurableInstaller>();
         TrimConfig(fs.File.ReadAllText(Path.Combine(destinationPath, BootfilesVehicleListDir, VehicleListFileName)))
@@ -200,7 +200,7 @@ public class BootfilesInstallerTest
         var installer = InstallBootfiles();
         backupStrategyMock.Invocations.Clear();
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         backupStrategyMock.VerifyNoOtherCalls();
     }
@@ -213,7 +213,7 @@ public class BootfilesInstallerTest
         var installer = InstallBootfiles();
         fs.File.WriteAllText(source, "New.crd");
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         TrimConfig(fs.File.ReadAllText(Path.Combine(destinationPath, BootfilesVehicleListDir, VehicleListFileName)))
             .Should().Be("New.crd");
@@ -230,7 +230,7 @@ public class BootfilesInstallerTest
         var installer = InstallBootfiles();
         fs.File.Delete(source);
 
-        installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         fs.File.ReadAllText(target).Should().Be(original);
     }
@@ -255,7 +255,7 @@ public class BootfilesInstallerTest
         fs.AddFile(target, original);
         var installer = CreateBootfiles();
 
-        var configure = () => installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var configure = () => installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         configure.Should().Throw<InvalidDataException>();
         fs.File.ReadAllText(target).Should().Be(original);
@@ -271,7 +271,7 @@ public class BootfilesInstallerTest
         backupStrategyMock.Setup(b => b.PerformBackup(target)).Throws(new IOException("Backup failed"));
         var installer = CreateBootfiles();
 
-        var configure = () => installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var configure = () => installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         configure.Should().Throw<IOException>();
         fs.File.ReadAllText(target.Full).Should().Be("Original");
@@ -286,7 +286,7 @@ public class BootfilesInstallerTest
         fs.Directory.CreateDirectory(target.Full);
         var installer = CreateBootfiles();
 
-        var configure = () => installer.Reconfigure(backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
+        var configure = () => installer.Reconfigure(installer.InstalledFiles, backupStrategyMock.Object, new ProcessingCallbacks<RootedPath>());
 
         configure.Should().Throw<UnauthorizedAccessException>();
         installer.InstalledFiles.Should().Contain(target);
