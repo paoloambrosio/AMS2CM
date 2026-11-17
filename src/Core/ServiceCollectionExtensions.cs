@@ -26,6 +26,10 @@ public static class ServiceCollectionExtensions
         {
             AddWindowsServices(services);
         }
+        else if (OperatingSystem.IsLinux())
+        {
+            AddLinuxServices(services);
+        }
         services.TryAddSingleton(config.Game);
         services.TryAddSingleton(config.Updates);
         services.TryAddSingleton(config.ModInstall);
@@ -71,6 +75,13 @@ public static class ServiceCollectionExtensions
     {
         services.TryAddSingleton<ISteamLibraryLocator, Steam>();
         services.TryAddSingleton<ISafeFileDelete, WindowsRecyclingBin>();
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static void AddLinuxServices(IServiceCollection services)
+    {
+        services.TryAddSingleton<ISteamLibraryLocator, LinuxSteam>();
+        services.TryAddSingleton<ISafeFileDelete, FreeDesktopTrash>();
     }
 
     private static IDirectoryInfo ModsDirectory(IServiceProvider provider, Config config) =>

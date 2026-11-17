@@ -9,7 +9,8 @@
     <AssemblyName>AMS2CM.GUI</AssemblyName>
     <RootNamespace>AMS2CM.GUI</RootNamespace>
     <Platforms>x64</Platforms>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishAot>false</PublishAot>

@@ -42,7 +42,7 @@ jobs:
       with:
         name: AMS2CM CLI
         path: |
-            src/CLI/bin/${{ matrix.platform }}/${{ matrix.configuration }}/net11.0-windows/**
+            src/CLI/bin/${{ matrix.platform }}/${{ matrix.configuration }}/net11.0/**
             LICENSE
         if-no-files-found: error
     # Separate package until stable, to be able to release CLI independently

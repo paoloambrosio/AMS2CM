@@ -1,0 +1,10 @@
+<Project>
+  <Target Name="ExcludeLinuxInstaller"
+          BeforeTargets="_LoadRestoreGraphEntryPoints;Build;Rebuild;Clean;Publish;VSTest"
+          Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <ItemGroup>
+      <ProjectReference Remove="$(MSBuildThisFileDirectory)src/Installer/Installer.wixproj;$(MSBuildThisFileDirectory)src/Installer/Installer.wixproj.metaproj" />
+    </ItemGroup>
+    <Message Importance="Normal" Text="Skipping the Windows installer on Linux." />
+  </Target>
+</Project>

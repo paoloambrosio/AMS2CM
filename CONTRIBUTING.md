@@ -3,14 +3,37 @@
 ## Development
 
 Install the .NET SDK selected by `global.json`.
-The GUI uses Uno Skia Desktop with a Win32 host. Windows x64 is the only
-supported runtime; Linux hosting and OS integrations are deferred.
+The GUI uses Uno Skia Desktop with Win32 hosting on Windows x64 and X11 hosting
+on Linux x64. GUI builds default to the host operating system's runtime. An
+explicit project-level runtime identifier overrides that default.
 
 ```powershell
 dotnet build AMS2CM.sln -c Release -p:Platform=x64
 dotnet test AMS2CM.sln -c Release -p:Platform=x64 --no-build --no-restore
 dotnet run --project src/GUI -p:Platform=x64 -- --Game:Path="C:\TestGame"
 ```
+
+On Linux, the normal solution commands automatically exclude the Windows
+installer from restore, build, rebuild, clean, publish, and test operations.
+Linux packaging is separate work.
+
+To launch the Linux GUI, install the .NET 11 runtime and use an X11 desktop
+session, or XWayland under Wayland. The host requires graphics drivers with
+OpenGL support (such as Mesa), fontconfig, libXrandr, libXi, and D-Bus. See
+[Uno's Linux prerequisites](https://platform.uno/docs/articles/features/using-skia-desktop.html#additional-setup)
+for distribution-specific setup.
+
+```bash
+dotnet build AMS2CM.sln -c Release -p:Platform=x64
+dotnet run --project src/GUI -c Release -p:Platform=x64 -- --Game:Path="/absolute/path/to/TestGame"
+```
+
+Linux Steam discovery and safe deletion are registered stubs. They throw
+descriptive `NotImplementedException` errors when invoked; constructors and
+service resolution succeed. Supply an absolute `Game:Path` to bypass Steam
+discovery. Safe deletion does not fall back to permanently deleting files.
+Filesystem portability work and the existing Linux test failures are deferred;
+a successful build does not yet imply full Linux mod-operation support.
 
 Use a disposable game directory when testing mod operations. The GUI preserves
 the existing command-line configuration, including the beta game overrides.
@@ -19,8 +42,8 @@ intermediate `gui-publish` directory and packages that output in the MSI.
 Users must install the .NET 11 runtime for Windows x64 separately. See
 [installer validation](src/Installer/README.md) for Windows Sandbox checks.
 
-Core targets plain .NET. Windows-only defaults for `ISteamLibraryLocator` and
-`ISafeFileDelete` are registered behind an OS guard and can be overridden before
+Core and CLI target plain .NET. Defaults for `ISteamLibraryLocator` and
+`ISafeFileDelete` are registered behind OS guards and can be overridden before
 calling `AddCoreServices`. Future desktop hosts must supply their own platform
 services. Shared UI code uses Uno APIs rather than Windows App SDK or WinUIEx.
 

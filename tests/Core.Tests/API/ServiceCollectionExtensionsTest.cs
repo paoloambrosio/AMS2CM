@@ -17,7 +17,7 @@ public class ServiceCollectionExtensionsTest
 {
     #region Setup
 
-    private const string GameDirectory = @"C:\Game";
+    private static readonly string GameDirectory = Path.Combine(Path.GetTempPath(), "Game");
     private const string ModsDirectory = "Packages";
     private readonly MockFileSystem fs = new();
 
@@ -35,6 +35,22 @@ public class ServiceCollectionExtensionsTest
 
         provider.GetRequiredService<IModManager>().Should().NotBeNull();
         provider.GetRequiredService<IUpdateChecker>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddCoreServices_ResolvesSteamLibraryLocator()
+    {
+        using var provider = BuildProvider();
+
+        provider.GetRequiredService<ISteamLibraryLocator>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddCoreServices_ResolvesSafeFileDelete()
+    {
+        using var provider = BuildProvider();
+
+        provider.GetRequiredService<ISafeFileDelete>().Should().NotBeNull();
     }
 
     [Fact]
