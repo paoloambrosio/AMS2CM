@@ -1,6 +1,6 @@
 Game:
   SteamId: "1066890"
-  Path: steamapps\common\Automobilista 2
+  Path: steamapps/common/Automobilista 2
   ProcessName: AMS2AVX
 ModInstall:
   ExcludedFromConfig:

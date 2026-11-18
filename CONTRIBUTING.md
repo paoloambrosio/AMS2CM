@@ -28,10 +28,22 @@ dotnet build AMS2CM.sln -c Release -p:Platform=x64
 dotnet run --project src/GUI -c Release -p:Platform=x64 -- --Game:Path="/absolute/path/to/TestGame"
 ```
 
-Linux Steam discovery and safe deletion are registered stubs. They throw
-descriptive `NotImplementedException` errors when invoked; constructors and
-service resolution succeed. Supply an absolute `Game:Path` to bypass Steam
-discovery. Safe deletion does not fall back to permanently deleting files.
+Linux Steam discovery reads `steamapps/libraryfolders.vdf` and finds the library
+containing the configured app ID, including libraries on other drives. It looks
+for configuration through native Steam aliases under `~/.steam`, the absolute
+`XDG_DATA_HOME/Steam` location, and `~/.local/share/Steam`; Flatpak locations under
+`~/.var/app/com.valvesoftware.Steam/{.local/share,data}/Steam`; and Snap locations
+under `~/snap/steam/common/.local/share/Steam` and
+`~/.snap/data/steam/common/.local/share/Steam`. Symlink aliases are deduplicated.
+Unreadable or malformed configurations are reported with their paths. If the
+app is absent or appears in multiple distinct libraries, supply an absolute
+`Game:Path` to bypass discovery and select the game directory explicitly.
+
+Safe deletion requires the `gio` command on `PATH`, provided by the GIO
+command-line tools (the `libglib2.0-bin` package on Debian/Ubuntu). Files,
+directories, and symlinks are moved to the desktop trash using `gio trash`.
+Failures are reported without falling back to permanent deletion. Constructors
+and service resolution do not launch GIO or require it to be installed.
 Filesystem portability work and the existing Linux test failures are deferred;
 a successful build does not yet imply full Linux mod-operation support.
 

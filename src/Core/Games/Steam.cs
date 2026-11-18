@@ -1,8 +1,6 @@
 ﻿using System.IO.Abstractions;
 using System.Runtime.Versioning;
 using Core.Utils;
-using Gameloop.Vdf;
-using Gameloop.Vdf.JsonConverter;
 using Microsoft.Win32;
 
 namespace Core.Games;
@@ -19,7 +17,7 @@ public class Steam(IFileSystem fs) : ISteamLibraryLocator
     {
         var steamDir = MainInstallationPath();
         var libraryFoldersPath = Path.Combine(steamDir, "steamapps", "libraryfolders.vdf");
-        var gameLibraryFolders = ReadLibraryFolders(libraryFoldersPath)
+        var gameLibraryFolders = new SteamLibraryFolders(fs).Read(libraryFoldersPath)
             .Where(lf => lf.Apps.ContainsKey(appId)).ToArray();
         return gameLibraryFolders.Length switch
         {
@@ -43,18 +41,4 @@ public class Steam(IFileSystem fs) : ISteamLibraryLocator
             throw new Exception("Cannot find Steam installation path", e);
         }
     }
-
-    private IEnumerable<LibraryFolder> ReadLibraryFolders(string path)
-    {
-        var libraryFolders = fs.File.ReadAllText(path);
-        var vdfRoot = VdfConvert.Deserialize(libraryFolders);
-        return vdfRoot.ToJson().Value
-            .SelectMany(x => x)
-            .Select(o => o.ToObject<LibraryFolder>() ?? throw new Exception("Invalid Steam library folder"));
-    }
-
-    private record LibraryFolder(
-        string Path,
-        Dictionary<string, string> Apps
-    );
 }

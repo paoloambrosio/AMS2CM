@@ -9,7 +9,7 @@ public class GameTest
 {
     #region Setup
 
-    private const string LibraryDirectory = @"C:\Library";
+    private static readonly string LibraryDirectory = Path.Combine(Path.GetTempPath(), "Library");
     private const string GameName = "Game";
     private const string AppId = "App";
     private static readonly string GameDirectory = Path.Combine(LibraryDirectory, GameName);
@@ -50,7 +50,7 @@ public class GameTest
     [Fact]
     public void MissingDirectory_Throws()
     {
-        var config = new GameConfig { Path = @"C:\Missing" };
+        var config = new GameConfig { Path = Path.Combine(LibraryDirectory, "Missing") };
 
         var create = () => new Game(fs, config, steam.Object);
 
